@@ -419,19 +419,23 @@ def main():
     gb.configure_column("Height", editable=True, type=["numericColumn", "numberColumnFilter"], min_value=0.0, header_name="Height (in)")
     gb.configure_column("Actual Weight", editable=True, type=["numericColumn", "numberColumnFilter"], min_value=0.0, header_name="Weight (lbs)")
 
-    # Enable Excel-like keyboard navigation
+    # Enable Excel-like keyboard navigation with cell focus
     gb.configure_grid_options(
         enableRangeSelection=True,
+        enableCellTextSelection=True,
+        ensureDomOrder=True,
         enterMovesDown=True,
         enterMovesDownAfterEdit=True,
         singleClickEdit=False,
         stopEditingWhenCellsLoseFocus=True,
         suppressRowClickSelection=True,
+        suppressCellFocus=False,
+        navigateToNextCell=True,
     )
 
     grid_options = gb.build()
 
-    # Custom CSS for grid lines
+    # Custom CSS for grid lines and cell focus highlighting
     custom_css = {
         ".ag-cell": {
             "border": "1px solid #e0e0e0 !important",
@@ -442,6 +446,15 @@ def main():
         },
         ".ag-row": {
             "border-bottom": "1px solid #e0e0e0 !important",
+        },
+        ".ag-cell-focus": {
+            "border": "2px solid #1e88e5 !important",
+            "background-color": "#e3f2fd !important",
+            "outline": "none !important",
+        },
+        ".ag-cell-focus:not(.ag-cell-range-selected)": {
+            "border": "2px solid #1e88e5 !important",
+            "background-color": "#e3f2fd !important",
         }
     }
 
