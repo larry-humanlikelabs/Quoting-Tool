@@ -1018,7 +1018,8 @@ def main():
                 try:
                     csv_filename = f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.csv"
                     # Select only essential columns for CSV export
-                    csv_columns = ["SKU", "Units", "Length", "Width", "Height", "Actual Weight", "Unit Cost", "Unit Price"]
+                    csv_columns = ["SKU", "Units", "Length", "Width", "Height", "Actual Weight",
+                                   "DIM Weight", "Billable Weight", "Unit Cost", "Unit Price"]
                     csv_df = valid_df[csv_columns].copy()
                     csv_data = csv_df.to_csv(index=False)
                     csv_success = True
