@@ -1011,38 +1011,48 @@ def main():
                         pdf_filename=pdf_filename,
                         quote_id=quote_id
                     )
-                    st.success(f"✓ Quote {quote_id} generated and logged successfully!")
                 except Exception as e:
-                    st.success(f"✓ Quote {quote_id} generated successfully!")
                     st.warning(f"Note: Audit logging failed ({e}). Contact administrator if this persists.")
 
                 # Generate CSV export with all calculated data
                 csv_filename = f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.csv"
                 csv_data = valid_df.to_csv(index=False)
 
-                st.info(f"📦 Files ready: {pdf_filename} ({len(pdf_bytes)} bytes), {csv_filename} ({len(csv_data)} bytes)")
+                # Store in session state to persist across reruns
+                st.session_state.quote_generated = True
+                st.session_state.quote_id = quote_id
+                st.session_state.pdf_bytes = pdf_bytes
+                st.session_state.pdf_filename = pdf_filename
+                st.session_state.csv_data = csv_data
+                st.session_state.csv_filename = csv_filename
 
-                # Show both download buttons side by side
-                col_pdf, col_csv = st.columns(2)
+    # Show download buttons if quote has been generated (outside button handler)
+    if st.session_state.get('quote_generated', False):
+        st.success(f"✓ Quote {st.session_state.quote_id} generated and logged successfully!")
 
-                with col_pdf:
-                    st.download_button(
-                        label="📥 Download Quote PDF",
-                        data=pdf_bytes,
-                        file_name=pdf_filename,
-                        mime="application/pdf",
-                        use_container_width=True,
-                    )
+        st.info(f"📦 Files ready: {st.session_state.pdf_filename} ({len(st.session_state.pdf_bytes)} bytes), {st.session_state.csv_filename} ({len(st.session_state.csv_data)} bytes)")
 
-                with col_csv:
-                    st.download_button(
-                        label="📊 Download Quote CSV",
-                        data=csv_data,
-                        file_name=csv_filename,
-                        mime="text/csv",
-                        use_container_width=True,
-                        help="Download quote data with all calculations in CSV format"
-                    )
+        # Show both download buttons side by side
+        col_pdf, col_csv = st.columns(2)
+
+        with col_pdf:
+            st.download_button(
+                label="📥 Download Quote PDF",
+                data=st.session_state.pdf_bytes,
+                file_name=st.session_state.pdf_filename,
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
+        with col_csv:
+            st.download_button(
+                label="📊 Download Quote CSV",
+                data=st.session_state.csv_data,
+                file_name=st.session_state.csv_filename,
+                mime="text/csv",
+                use_container_width=True,
+                help="Download quote data with all calculations in CSV format"
+            )
 
 
 if __name__ == "__main__":
