@@ -506,7 +506,18 @@ def main():
 
         if uploaded_file is not None:
             try:
-                import_df = pd.read_csv(uploaded_file)
+                # Security: Read CSV with UTF-8 encoding (handles BOM)
+                import_df = pd.read_csv(uploaded_file, encoding='utf-8-sig')
+
+                # Security: Check row count limit (prevent resource exhaustion)
+                if len(import_df) > 10000:
+                    st.error("❌ CSV exceeds 10,000 row limit. Please split into smaller files.")
+                    return
+
+                # UX: Check if CSV is empty
+                if len(import_df) == 0:
+                    st.warning("⚠️ CSV file is empty. No data to import.")
+                    return
 
                 # Normalize column names to handle both formats
                 column_mapping = {
@@ -522,21 +533,89 @@ def main():
                 missing_cols = [col for col in required_cols if col not in import_df.columns]
 
                 if missing_cols:
-                    st.error(f"Missing required columns: {', '.join(missing_cols)}")
-                else:
-                    # Ensure columns are in the right order
-                    import_df = import_df[required_cols].copy()
+                    st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
+                    st.info("💡 Download the template below for the correct format.")
+                    return
 
-                    # Normalize data types using helper function
-                    import_df = normalize_quote_data(import_df)
+                # UX: Show info about extra columns being ignored
+                extra_cols = set(import_df.columns) - set(required_cols)
+                if extra_cols:
+                    st.info(f"ℹ️ Extra columns will be ignored: {', '.join(extra_cols)}")
 
-                    # Update session state
-                    st.session_state.quote_data = import_df
-                    st.success(f"✓ Imported {len(import_df)} SKUs successfully!")
-                    st.rerun()
+                # Ensure columns are in the right order
+                import_df = import_df[required_cols].copy()
 
+                # Security: Trim whitespace from SKUs
+                import_df['SKU'] = import_df['SKU'].astype(str).str.strip()
+
+                # Security: Detect and warn about formula characters in SKU
+                formula_chars = import_df['SKU'].str.startswith(('=', '+', '-', '@', '|', '%'), na=False)
+                if formula_chars.any():
+                    st.warning("⚠️ Formula characters detected in SKU column. These may cause issues when exported to Excel.")
+
+                # UX: Detect duplicate SKUs
+                duplicates = import_df[import_df.duplicated('SKU', keep=False)]
+                if not duplicates.empty:
+                    dup_skus = duplicates['SKU'].unique()
+                    st.warning(f"⚠️ Duplicate SKUs found: {', '.join(dup_skus[:5])}")
+                    if len(dup_skus) > 5:
+                        st.warning(f"   ... and {len(dup_skus) - 5} more")
+
+                # Store original data for comparison
+                original_df = import_df.copy()
+
+                # Normalize data types using helper function
+                import_df = normalize_quote_data(import_df)
+
+                # UX: Show validation summary of data modifications
+                modifications = []
+                for idx in range(len(import_df)):
+                    for col in ["Units", "Length", "Width", "Height", "Actual Weight"]:
+                        orig_val = original_df.iloc[idx][col]
+                        new_val = import_df.iloc[idx][col]
+
+                        # Check for changes
+                        if pd.notna(orig_val) and orig_val != new_val:
+                            if orig_val < 0:
+                                modifications.append(f"Row {idx + 1}: {col} ({orig_val}) → 0 (negative values not allowed)")
+                            elif col == "Units" and isinstance(orig_val, (int, float)) and orig_val != int(orig_val):
+                                modifications.append(f"Row {idx + 1}: {col} ({orig_val}) → {new_val} (rounded)")
+                        elif pd.isna(orig_val) or (isinstance(orig_val, str) and not orig_val.replace('.', '').replace('-', '').isdigit()):
+                            if col == "Units" and new_val == 1:
+                                modifications.append(f"Row {idx + 1}: {col} ('{orig_val}') → 1 (invalid value)")
+                            elif new_val == 0:
+                                modifications.append(f"Row {idx + 1}: {col} ('{orig_val}') → 0 (invalid value)")
+
+                if modifications:
+                    with st.expander(f"⚠️ {len(modifications)} data modification(s) detected - click to review"):
+                        for mod in modifications[:20]:  # Show first 20
+                            st.text(mod)
+                        if len(modifications) > 20:
+                            st.text(f"... and {len(modifications) - 20} more modifications")
+
+                # UX: Warn if overwriting existing data
+                if not st.session_state.quote_data.empty and st.session_state.quote_data['SKU'].ne('').any():
+                    st.warning("⚠️ This will replace all existing data in the grid.")
+
+                # Update session state
+                st.session_state.quote_data = import_df
+                st.success(f"✓ Successfully imported {len(import_df)} SKUs!")
+                st.rerun()
+
+            except pd.errors.ParserError as e:
+                st.error(f"❌ CSV file is malformed: {str(e)}")
+                st.info("💡 Check for unmatched quotes or incorrect delimiters. Download the template for reference.")
+            except pd.errors.EmptyDataError:
+                st.warning("⚠️ CSV file is empty. No data to import.")
+            except UnicodeDecodeError:
+                st.error("❌ Encoding error. Please save your CSV file as UTF-8 format.")
+                st.info("💡 In Excel: File → Save As → CSV UTF-8 (Comma delimited)")
+            except KeyError as e:
+                st.error(f"❌ Column error: {str(e)}")
+                st.info("💡 Download the template below for the correct format.")
             except Exception as e:
-                st.error(f"Error importing CSV: {str(e)}")
+                st.error(f"❌ Error importing CSV: {str(e)}")
+                st.info("💡 If this problem persists, download the template and ensure your file matches the format.")
 
     with col_export:
         st.markdown("**📤 Download Template**")
