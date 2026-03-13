@@ -407,23 +407,25 @@ def main():
     st.divider()
 
     # ── Edit user input data (no calculations in editor) ──
+    # Store the current data before editing
     edited_df = st.data_editor(
         st.session_state.quote_data,
         num_rows="dynamic",
         use_container_width=True,
+        hide_index=True,
         column_config={
             "SKU": st.column_config.TextColumn("SKU"),
-            "Units": st.column_config.NumberColumn("Units", min_value=0, default=1),
-            "Length": st.column_config.NumberColumn("Length (in)", min_value=0.0, format="%.1f"),
-            "Width": st.column_config.NumberColumn("Width (in)", min_value=0.0, format="%.1f"),
-            "Height": st.column_config.NumberColumn("Height (in)", min_value=0.0, format="%.1f"),
-            "Actual Weight": st.column_config.NumberColumn("Weight (lbs)", min_value=0.0, format="%.1f"),
+            "Units": st.column_config.NumberColumn("Units", min_value=1, default=1),
+            "Length": st.column_config.NumberColumn("Length (in)", min_value=0.0),
+            "Width": st.column_config.NumberColumn("Width (in)", min_value=0.0),
+            "Height": st.column_config.NumberColumn("Height (in)", min_value=0.0),
+            "Actual Weight": st.column_config.NumberColumn("Weight (lbs)", min_value=0.0),
         },
         key="sku_editor",
     )
 
-    # Persist user input
-    st.session_state.quote_data = edited_df.copy()
+    # Always update session state with the editor output
+    st.session_state.quote_data = edited_df
 
     # Compute calculations for display
     result_df = compute_quotes(edited_df, margin_pct, base_fee, dhl_nqd_rate)
