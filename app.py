@@ -371,14 +371,11 @@ def main():
                 if missing_cols:
                     st.error(f"Missing required columns: {', '.join(missing_cols)}")
                 else:
-                    # Ensure columns are in the right order and types
+                    # Ensure columns are in the right order
                     import_df = import_df[required_cols].copy()
 
-                    # Convert to proper types
-                    import_df["SKU"] = import_df["SKU"].astype(str)
-                    for col in ["Units", "Length", "Width", "Height", "Actual Weight"]:
-                        import_df[col] = pd.to_numeric(import_df[col], errors="coerce").fillna(0)
-                    import_df["Units"] = import_df["Units"].astype(int)
+                    # Normalize data types using helper function
+                    import_df = normalize_quote_data(import_df)
 
                     # Update session state
                     st.session_state.quote_data = import_df
@@ -438,6 +435,28 @@ def main():
 
     st.divider()
 
+    # ── Helper function for data normalization ──
+    def normalize_quote_data(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Normalize quote data types to ensure consistent comparison and storage.
+        Prevents data loss from type mismatches between AgGrid and session state.
+        """
+        normalized = df.copy()
+
+        # Ensure SKU is string
+        normalized["SKU"] = normalized["SKU"].astype(str).replace("nan", "")
+
+        # Ensure numeric columns are proper types with no NaN
+        for col in ["Units", "Length", "Width", "Height", "Actual Weight"]:
+            normalized[col] = pd.to_numeric(normalized[col], errors="coerce").fillna(0)
+
+        # Ensure Units is integer
+        normalized["Units"] = normalized["Units"].astype(int)
+        # Ensure Units is at least 1 (prevent 0 units)
+        normalized.loc[normalized["Units"] < 1, "Units"] = 1
+
+        return normalized
+
     # ── Edit user input data with AgGrid (Excel-like navigation) ──
     gb = GridOptionsBuilder.from_dataframe(st.session_state.quote_data)
 
@@ -491,7 +510,7 @@ def main():
     grid_response = AgGrid(
         st.session_state.quote_data,
         gridOptions=grid_options,
-        update_mode=GridUpdateMode.VALUE_CHANGED,
+        update_mode=GridUpdateMode.MODEL_CHANGED,
         data_return_mode=DataReturnMode.AS_INPUT,
         fit_columns_on_grid_load=True,
         theme="streamlit",
@@ -500,14 +519,13 @@ def main():
         enable_enterprise_modules=False,
         custom_css=custom_css,
         reload_data=False,
+        key="quote_data_grid",
     )
 
     # Update session state with edited data (preserve raw input)
     if grid_response['data'] is not None:
-        edited_df = pd.DataFrame(grid_response['data'])
-        # Only update session state if data actually changed
-        if not edited_df.equals(st.session_state.quote_data):
-            st.session_state.quote_data = edited_df
+        edited_df = normalize_quote_data(pd.DataFrame(grid_response['data']))
+        st.session_state.quote_data = edited_df
     else:
         edited_df = st.session_state.quote_data
 
