@@ -5,6 +5,7 @@ import os
 import io
 from datetime import datetime
 from fpdf import FPDF
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -406,26 +407,46 @@ def main():
 
     st.divider()
 
-    # ── Edit user input data (no calculations in editor) ──
-    # Store the current data before editing
-    edited_df = st.data_editor(
-        st.session_state.quote_data,
-        num_rows="dynamic",
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "SKU": st.column_config.TextColumn("SKU"),
-            "Units": st.column_config.NumberColumn("Units", min_value=1, default=1),
-            "Length": st.column_config.NumberColumn("Length (in)", min_value=0.0),
-            "Width": st.column_config.NumberColumn("Width (in)", min_value=0.0),
-            "Height": st.column_config.NumberColumn("Height (in)", min_value=0.0),
-            "Actual Weight": st.column_config.NumberColumn("Weight (lbs)", min_value=0.0),
-        },
-        key="sku_editor",
+    # ── Edit user input data with AgGrid (Excel-like navigation) ──
+    gb = GridOptionsBuilder.from_dataframe(st.session_state.quote_data)
+
+    # Enable Excel-like features
+    gb.configure_default_column(editable=True, groupable=False)
+    gb.configure_column("SKU", editable=True, type=["textColumn"])
+    gb.configure_column("Units", editable=True, type=["numericColumn", "numberColumnFilter"], min_value=1, value=1)
+    gb.configure_column("Length", editable=True, type=["numericColumn", "numberColumnFilter"], min_value=0.0, header_name="Length (in)")
+    gb.configure_column("Width", editable=True, type=["numericColumn", "numberColumnFilter"], min_value=0.0, header_name="Width (in)")
+    gb.configure_column("Height", editable=True, type=["numericColumn", "numberColumnFilter"], min_value=0.0, header_name="Height (in)")
+    gb.configure_column("Actual Weight", editable=True, type=["numericColumn", "numberColumnFilter"], min_value=0.0, header_name="Weight (lbs)")
+
+    # Enable Excel-like keyboard navigation
+    gb.configure_grid_options(
+        enableRangeSelection=True,
+        enterMovesDown=True,
+        enterMovesDownAfterEdit=True,
+        singleClickEdit=False,
+        stopEditingWhenCellsLoseFocus=True,
+        suppressRowClickSelection=True,
     )
 
-    # Always update session state with the editor output
-    st.session_state.quote_data = edited_df
+    grid_options = gb.build()
+
+    grid_response = AgGrid(
+        st.session_state.quote_data,
+        gridOptions=grid_options,
+        update_mode=GridUpdateMode.MODEL_CHANGED,
+        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+        fit_columns_on_grid_load=True,
+        theme="streamlit",
+        height=400,
+        allow_unsafe_jscode=True,
+        enable_enterprise_modules=False,
+    )
+
+    # Update session state with edited data
+    if grid_response['data'] is not None:
+        edited_df = pd.DataFrame(grid_response['data'])
+        st.session_state.quote_data = edited_df
 
     # Compute calculations for display
     result_df = compute_quotes(edited_df, margin_pct, base_fee, dhl_nqd_rate)
