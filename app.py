@@ -356,12 +356,15 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
 
     # Notice box
     pdf.multi_cell(
-        0, 5,
-        "IMPORTANT NOTICE: Accurate SKU dimensions and weight reporting by clients is critical to maintaining the "
-        "integrity of our margins on deals. If SKUs are received by our 3PL partners and they greatly exceed the "
-        "communicated SKU details, BV may hold the campaign prior to shipment to our members and seek additional "
-        "fulfillment charges.",
-        border=1, align="L", fill=True
+        w=0,
+        h=5,
+        txt="IMPORTANT NOTICE: Accurate SKU dimensions and weight reporting by clients is critical to maintaining the "
+            "integrity of our margins on deals. If SKUs are received by our 3PL partners and they greatly exceed the "
+            "communicated SKU details, BV may hold the campaign prior to shipment to our members and seek additional "
+            "fulfillment charges.",
+        border=1,
+        align="L",
+        fill=True
     )
 
     buf = io.BytesIO()
