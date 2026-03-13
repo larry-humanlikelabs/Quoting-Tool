@@ -1,0 +1,632 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import os
+import io
+from datetime import datetime
+from fpdf import FPDF
+
+# ─── Page config ──────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="BV Fulfillment Quoting Tool",
+    page_icon="📦",
+    layout="wide",
+)
+
+# ─── Load DHL rates from CSV ─────────────────────────────────────────────────
+@st.cache_data
+def load_dhl_rates() -> tuple[dict[int, float], dict[int, float]]:
+    """Load DHL Zone 6 rates from dhl_rates.csv.
+    Returns (oz_rates, lb_rates) dicts mapping weight -> US 06 price.
+    """
+    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dhl_rates.csv")
+    df = pd.read_csv(csv_path)
+    oz_rates = df[df["weight_type"] == "OZ"].set_index("weight")["US 06"].to_dict()
+    lb_rates = df[df["weight_type"] == "LB"].set_index("weight")["US 06"].to_dict()
+    return oz_rates, lb_rates
+
+
+DHL_OZ_RATES, DHL_LB_RATES = load_dhl_rates()
+
+# FedEx Ground Economy Zone 6 rates (25–70 lbs)
+FEDEX_RATES = {
+    25: 41.91, 26: 43.43, 27: 45.19, 28: 47.39, 29: 48.75,
+    30: 48.45, 31: 49.85, 32: 49.87, 33: 53.00, 34: 53.01,
+    35: 53.92, 36: 56.19, 37: 56.43, 38: 57.71, 39: 60.33,
+    40: 60.42, 41: 63.20, 42: 63.22, 43: 67.02, 44: 67.03,
+    45: 67.05, 46: 68.81, 47: 69.80, 48: 70.79, 49: 71.86,
+    50: 71.94, 51: 72.50, 52: 72.51, 53: 72.53, 54: 72.53,
+    55: 72.54, 56: 72.57, 57: 72.60, 58: 72.61, 59: 73.11,
+    60: 74.48, 61: 74.48, 62: 75.63, 63: 76.16, 64: 76.68,
+    65: 77.37, 66: 77.41, 67: 78.02, 68: 79.17, 69: 80.34,
+    70: 81.18,
+}
+
+# ─── Build numpy lookup arrays for vectorized rate lookups ────────────────────
+_DHL_LB_MAX = max(DHL_LB_RATES.keys())
+_dhl_lb_arr = np.zeros(_DHL_LB_MAX + 1)
+for _w, _r in DHL_LB_RATES.items():
+    _dhl_lb_arr[_w] = _r
+
+_FEDEX_MIN = 25
+_FEDEX_MAX = 70
+_fedex_arr = np.zeros(_FEDEX_MAX + 1)
+for _w, _r in FEDEX_RATES.items():
+    _fedex_arr[_w] = _r
+
+
+# ─── Vectorized calculation on dataframe ─────────────────────────────────────
+def compute_quotes(df: pd.DataFrame, margin_pct: float,
+                   base_fee: float, dhl_nqd_rate: float = 2.50) -> pd.DataFrame:
+    """Apply all calculations vectorized with numpy/pandas."""
+    out = df.copy()
+
+    for col in ["Units", "Length", "Width", "Height", "Actual Weight"]:
+        out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0)
+    out["Units"] = out["Units"].astype(int)
+
+    L = out["Length"].values.astype(float)
+    W = out["Width"].values.astype(float)
+    H = out["Height"].values.astype(float)
+    AW = out["Actual Weight"].values.astype(float)
+
+    # DIM weight = ceil(L*W*H / 166)
+    volume = L * W * H
+    dim_raw = volume / 166.0
+    dim_weight = np.where(dim_raw > 0, np.ceil(dim_raw), 0).astype(int)
+    out["DIM Weight"] = dim_weight
+
+    # Billable weight = ceil(max(actual, dim))
+    max_weight = np.maximum(AW, dim_weight.astype(float))
+    billable = np.where(max_weight > 0, np.ceil(max_weight), 0).astype(int)
+    out["Billable Weight"] = billable
+
+    # Carrier routing
+    is_fedex = billable >= 25
+    out["Carrier"] = np.where(is_fedex, "FedEx", "DHL")
+
+    # Base shipping cost — vectorized via numpy array indexing
+    dhl_idx = np.clip(billable, 0, _DHL_LB_MAX)
+    dhl_cost = _dhl_lb_arr[dhl_idx]
+    fedex_idx = np.clip(billable, _FEDEX_MIN, _FEDEX_MAX)
+    fedex_cost = _fedex_arr[fedex_idx]
+    shipping_cost = np.where(is_fedex, fedex_cost, dhl_cost)
+    out["Base Shipping Cost"] = shipping_cost
+
+    # Surcharges — fully vectorized
+    girth = (2 * W) + (2 * H)
+    longest = np.maximum(np.maximum(L, W), H)
+
+    # DHL NQD (using dynamic rate)
+    dhl_nqd = (L + girth > 50) | (longest > 27) | (volume > 1728)
+    dhl_surcharge = np.where(dhl_nqd, billable * dhl_nqd_rate, 0.0)
+
+    # FedEx cascading — sort dims for second longest
+    dims_stack = np.stack([L, W, H], axis=1)
+    dims_sorted = np.sort(dims_stack, axis=1)[:, ::-1]
+    second_longest = dims_sorted[:, 1]
+
+    fedex_oversize = (L > 96) | (L + girth > 130) | (AW > 110)
+    fedex_ahs_wt = (~fedex_oversize) & (AW > 50)
+    fedex_ahs_dim = (~fedex_oversize) & (~fedex_ahs_wt) & (
+        (L > 48) | (second_longest > 30) | (L + girth > 105)
+    )
+    fedex_surcharge = np.where(
+        fedex_oversize, 255.0,
+        np.where(fedex_ahs_wt, 56.25,
+                 np.where(fedex_ahs_dim, 38.50, 0.0))
+    )
+
+    surcharges = np.where(is_fedex, fedex_surcharge, dhl_surcharge)
+    out["Surcharges"] = surcharges
+
+    # Unit cost
+    unit_cost = base_fee + shipping_cost + surcharges
+    out["Unit Cost"] = unit_cost
+
+    # Recommended unit price
+    if margin_pct >= 100:
+        out["Unit Price"] = float("inf")
+    else:
+        out["Unit Price"] = unit_cost / (1 - margin_pct / 100)
+
+    # Extended total
+    out["Extended Total"] = out["Unit Price"] * out["Units"]
+
+    # Flag for FedEx >70 lbs
+    out["_over_70"] = is_fedex & (billable > 70)
+
+    return out
+
+
+# ─── PDF generation ──────────────────────────────────────────────────────────
+class QuotePDF(FPDF):
+    def header(self):
+        logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+        if os.path.exists(logo_path):
+            self.image(logo_path, 10, 8, 40)
+        self.set_font("Helvetica", "B", 18)
+        self.cell(0, 10, "Fulfillment Pricing Quote", ln=True, align="C")
+        self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font("Helvetica", "I", 8)
+        self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", align="C")
+
+
+def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
+                 email: str, margin_pct: float, base_fee: float, discount_pct: float = 0.0,
+                 client_account: str = "", product_type: str = "") -> bytes:
+    pdf = QuotePDF(orientation="L", format="letter")
+    pdf.alias_nb_pages()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=20)
+
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 7, f"Prepared By: {first_name} {last_name}", ln=True)
+    pdf.cell(0, 7, f"Email: {email}", ln=True)
+    if client_account:
+        pdf.cell(0, 7, f"Client/Account: {client_account}", ln=True)
+    if product_type:
+        pdf.cell(0, 7, f"Product Type: {product_type}", ln=True)
+    pdf.cell(0, 7, f"Date: {datetime.now().strftime('%m/%d/%Y')}", ln=True)
+    pdf.cell(0, 7, f"Target Margin: {margin_pct:.0f}%    |    Base Fulfillment Fee: ${base_fee:,.2f}", ln=True)
+    pdf.ln(5)
+
+    cols = ["SKU", "Units", "Actual Wt", "DIM Wt", "Bill Wt", "Carrier", "Base Ship", "Surcharge", "Unit Cost", "Unit Price", "Ext Price"]
+    widths = [35, 20, 22, 22, 22, 25, 25, 25, 25, 25, 30]
+
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_fill_color(44, 62, 80)
+    pdf.set_text_color(255, 255, 255)
+    for c, w in zip(cols, widths):
+        pdf.cell(w, 8, c, border=1, align="C", fill=True)
+    pdf.ln()
+
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(0, 0, 0)
+    fill = False
+    grand_total = 0.0
+
+    for _, row in rows.iterrows():
+        if fill:
+            pdf.set_fill_color(235, 245, 251)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+
+        ext = row["Extended Total"]
+        grand_total += ext
+
+        vals = [
+            str(row["SKU"]),
+            str(int(row["Units"])),
+            f"{row['Actual Weight']:.1f}",
+            f"{row['DIM Weight']:.0f}",
+            f"{row['Billable Weight']:.0f}",
+            str(row["Carrier"]),
+            f"${row['Base Shipping Cost']:,.2f}",
+            f"${row['Surcharges']:,.2f}",
+            f"${row['Unit Cost']:,.2f}",
+            f"${row['Unit Price']:,.2f}",
+            f"${ext:,.2f}",
+        ]
+        for v, w in zip(vals, widths):
+            pdf.cell(w, 7, v, border=1, align="C", fill=True)
+        pdf.ln()
+        fill = not fill
+
+    pdf.ln(3)
+    pdf.set_font("Helvetica", "B", 11)
+
+    # Show subtotal, discount, and final total
+    subtotal = grand_total
+    if discount_pct > 0:
+        pdf.cell(0, 8, f"Subtotal: ${subtotal:,.2f}", ln=True, align="R")
+        discount_amount = subtotal * (discount_pct / 100)
+        pdf.cell(0, 8, f"Discount ({discount_pct:.0f}%): -${discount_amount:,.2f}", ln=True, align="R")
+        pdf.set_font("Helvetica", "B", 13)
+        final_total = subtotal - discount_amount
+        pdf.cell(0, 10, f"Grand Total Estimate: ${final_total:,.2f}", ln=True, align="R")
+    else:
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 10, f"Grand Total Estimate: ${grand_total:,.2f}", ln=True, align="R")
+
+    buf = io.BytesIO()
+    pdf.output(buf)
+    return buf.getvalue()
+
+
+# ─── Streamlit UI ────────────────────────────────────────────────────────────
+def main():
+    st.title("📦 BV Fulfillment Quoting Tool")
+
+    with st.sidebar:
+        st.header("Submitter Info")
+        first_name = st.text_input("First Name")
+        last_name = st.text_input("Last Name")
+        email = st.text_input("Email Address")
+        client_account = st.text_input("Client/Account Name (optional)")
+
+        st.divider()
+        product_type = st.selectbox(
+            "Product Type *",
+            options=[
+                "",  # Empty default to force selection
+                "Beauty & Personal Care",
+                "Household & Cleaning",
+                "Food & Beverage",
+                "Health & Wellness",
+                "Baby & Childcare",
+                "Pet Products",
+                "Electronics & Tech",
+                "Home & Garden",
+                "Automotive",
+                "Sporting Goods",
+                "Apparel & Accessories",
+                "Other"
+            ],
+            help="Select the primary product category for this quote (required)"
+        )
+
+        st.divider()
+        st.header("Project Settings")
+        margin_pct = st.slider("Target Margin %", 0, 100, 60)
+        if margin_pct == 100:
+            st.warning("100% margin results in infinite pricing. Capped at 99% for calculations.")
+        base_fee = st.number_input("Base Fulfillment Fee ($)", min_value=0.0,
+                                   value=2.50, step=0.25, format="%.2f")
+
+        dhl_nqd_rate = st.number_input(
+            "DHL NQD Surcharge Rate ($/lb)",
+            min_value=0.0,
+            value=2.50,
+            step=0.25,
+            format="%.2f",
+            help="DHL Non-Qualified Dimension surcharge rate per pound of billable weight. Increases to $2.50/lb during busy season."
+        )
+
+        st.divider()
+        st.header("Quote Discount")
+        discount_pct = st.slider("Overall Quote Discount %", 0, 100, 0,
+                                 help="Percentage discount applied to the grand total")
+
+    # ── Initialize session state ──
+    input_cols = ["SKU", "Units", "Length", "Width", "Height", "Actual Weight"]
+    if "quote_data" not in st.session_state:
+        st.session_state.quote_data = pd.DataFrame(
+            {
+                "SKU": [""] * 10,
+                "Units": [1] * 10,
+                "Length": [0.0] * 10,
+                "Width": [0.0] * 10,
+                "Height": [0.0] * 10,
+                "Actual Weight": [0.0] * 10,
+            }
+        )
+
+    # ── Import/Export Section ──
+    st.subheader("SKU Data & Calculated Quote")
+
+    col_import, col_export, col_clear = st.columns([2, 2, 1])
+
+    with col_import:
+        st.markdown("**📥 Import SKUs from CSV**")
+        uploaded_file = st.file_uploader(
+            "Upload CSV file",
+            type=['csv'],
+            help="Upload a CSV file with columns: SKU, Units, Length, Width, Height, Actual Weight",
+            label_visibility="collapsed"
+        )
+
+        if uploaded_file is not None:
+            try:
+                import_df = pd.read_csv(uploaded_file)
+
+                # Normalize column names to handle both formats
+                column_mapping = {
+                    "Length (in)": "Length",
+                    "Width (in)": "Width",
+                    "Height (in)": "Height",
+                    "Actual Weight (lbs)": "Actual Weight"
+                }
+                import_df.rename(columns=column_mapping, inplace=True)
+
+                # Validate required columns
+                required_cols = ["SKU", "Units", "Length", "Width", "Height", "Actual Weight"]
+                missing_cols = [col for col in required_cols if col not in import_df.columns]
+
+                if missing_cols:
+                    st.error(f"Missing required columns: {', '.join(missing_cols)}")
+                else:
+                    # Ensure columns are in the right order and types
+                    import_df = import_df[required_cols].copy()
+
+                    # Convert to proper types
+                    import_df["SKU"] = import_df["SKU"].astype(str)
+                    for col in ["Units", "Length", "Width", "Height", "Actual Weight"]:
+                        import_df[col] = pd.to_numeric(import_df[col], errors="coerce").fillna(0)
+                    import_df["Units"] = import_df["Units"].astype(int)
+
+                    # Update session state
+                    st.session_state.quote_data = import_df
+                    st.success(f"✓ Imported {len(import_df)} SKUs successfully!")
+                    st.rerun()
+
+            except Exception as e:
+                st.error(f"Error importing CSV: {str(e)}")
+
+    with col_export:
+        st.markdown("**📤 Download Template**")
+        template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SKU_Import_Template.csv")
+
+        if os.path.exists(template_path):
+            with open(template_path, 'r') as f:
+                template_csv = f.read()
+
+            st.download_button(
+                label="Download CSV Template",
+                data=template_csv,
+                file_name="SKU_Import_Template.csv",
+                mime="text/csv",
+                help="Download a template CSV file to fill out your SKU data"
+            )
+        else:
+            # Create template on-the-fly if file doesn't exist
+            template_df = pd.DataFrame({
+                "SKU": ["SAMPLE-001", "SAMPLE-002", "SAMPLE-003"],
+                "Units": [100, 50, 25],
+                "Length (in)": [12.0, 20.0, 8.0],
+                "Width (in)": [10.0, 15.0, 6.0],
+                "Height (in)": [8.0, 10.0, 4.0],
+                "Actual Weight (lbs)": [5.0, 15.0, 2.5]
+            })
+            template_csv = template_df.to_csv(index=False)
+
+            st.download_button(
+                label="Download CSV Template",
+                data=template_csv,
+                file_name="SKU_Import_Template.csv",
+                mime="text/csv",
+                help="Download a template CSV file to fill out your SKU data"
+            )
+
+    with col_clear:
+        st.markdown("**🗑️ Clear**")
+        if st.button("Clear All", help="Clear all SKU data and reset to blank rows"):
+            st.session_state.quote_data = pd.DataFrame({
+                "SKU": [""] * 10,
+                "Units": [1] * 10,
+                "Length": [0.0] * 10,
+                "Width": [0.0] * 10,
+                "Height": [0.0] * 10,
+                "Actual Weight": [0.0] * 10,
+            })
+            st.rerun()
+
+    st.divider()
+
+    # ── Edit user input data (no calculations in editor) ──
+    edited_df = st.data_editor(
+        st.session_state.quote_data,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "SKU": st.column_config.TextColumn("SKU"),
+            "Units": st.column_config.NumberColumn("Units", min_value=0, default=1),
+            "Length": st.column_config.NumberColumn("Length (in)", min_value=0.0, format="%.1f"),
+            "Width": st.column_config.NumberColumn("Width (in)", min_value=0.0, format="%.1f"),
+            "Height": st.column_config.NumberColumn("Height (in)", min_value=0.0, format="%.1f"),
+            "Actual Weight": st.column_config.NumberColumn("Weight (lbs)", min_value=0.0, format="%.1f"),
+        },
+        key="sku_editor",
+    )
+
+    # Persist user input
+    st.session_state.quote_data = edited_df.copy()
+
+    # Compute calculations for display
+    result_df = compute_quotes(edited_df, margin_pct, base_fee, dhl_nqd_rate)
+
+    valid_mask = (
+        result_df["SKU"].astype(str).str.strip().ne("")
+        & (result_df["Billable Weight"] > 0)
+    )
+    valid_df = result_df[valid_mask].copy()
+
+    # Display calculated results
+    if not valid_df.empty:
+        st.subheader("Calculated Results")
+
+        display_df = valid_df[[
+            "SKU", "Units", "Actual Weight", "DIM Weight", "Billable Weight", "Carrier",
+            "Base Shipping Cost", "Surcharges", "Unit Cost", "Unit Price", "Extended Total"
+        ]].copy()
+
+        # Format currency columns
+        for col in ["Base Shipping Cost", "Surcharges", "Unit Cost", "Unit Price", "Extended Total"]:
+            display_df[col] = display_df[col].apply(lambda x: f"${x:,.2f}")
+
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    # Warn about FedEx >70 lbs
+    if not valid_df.empty and valid_df["_over_70"].any():
+        over_skus = valid_df.loc[valid_df["_over_70"], "SKU"].tolist()
+        st.warning(f"SKUs exceeding 70 lbs (FedEx max rate used): {', '.join(str(s) for s in over_skus)}")
+
+    # Grand total metric with discount
+    if not valid_df.empty:
+        subtotal = valid_df["Extended Total"].sum()
+        discount_amount = subtotal * (discount_pct / 100)
+        grand_total = subtotal - discount_amount
+
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            st.metric("Subtotal", f"${subtotal:,.2f}")
+        with col_b:
+            st.metric("Discount", f"-${discount_amount:,.2f}",
+                     delta=f"-{discount_pct}%" if discount_pct > 0 else None,
+                     delta_color="off")
+        with col_c:
+            st.metric("Grand Total", f"${grand_total:,.2f}")
+
+        # ── Fee Breakdown Section ──
+        st.divider()
+        st.subheader("📊 Fee Breakdown")
+
+        # Aggregate statistics
+        total_base_fees = valid_df["Units"].sum() * base_fee
+        total_shipping = valid_df["Base Shipping Cost"].sum()
+        total_surcharges = valid_df["Surcharges"].sum()
+
+        # Summary stats
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Base Fulfillment Fees", f"${total_base_fees:,.2f}",
+                     help=f"{valid_df['Units'].sum()} units × ${base_fee:.2f}")
+        with col2:
+            st.metric("Total Shipping Costs", f"${total_shipping:,.2f}")
+        with col3:
+            st.metric("Total Surcharges", f"${total_surcharges:,.2f}")
+
+        # Detailed surcharge breakdown
+        if total_surcharges > 0:
+            st.markdown("**Surcharge Details:**")
+
+            # Recalculate to identify surcharge types
+            surcharge_details = []
+            for idx, row in valid_df.iterrows():
+                if row["Surcharges"] > 0:
+                    L, W, H = row["Length"], row["Width"], row["Height"]
+                    AW = row["Actual Weight"]
+                    carrier = row["Carrier"]
+
+                    if carrier == "DHL":
+                        girth = (2 * W) + (2 * H)
+                        longest = max(L, W, H)
+                        volume = L * W * H
+
+                        reasons = []
+                        if L + girth > 50:
+                            reasons.append(f"Length + Girth ({L + girth:.1f}\") > 50\"")
+                        if longest > 27:
+                            reasons.append(f"Longest side ({longest:.1f}\") > 27\"")
+                        if volume > 1728:
+                            reasons.append(f"Volume ({volume:.0f} cu.in) > 1728 cu.in")
+
+                        surcharge_details.append({
+                            "SKU": row["SKU"],
+                            "Type": "DHL NQD (Non-Qualified Dimension)",
+                            "Reason": " OR ".join(reasons),
+                            "Amount": row["Surcharges"],
+                            "Calculation": f"{row['Billable Weight']} lbs × ${dhl_nqd_rate:.2f}/lb"
+                        })
+
+                    elif carrier == "FedEx":
+                        girth = (2 * W) + (2 * H)
+                        dims = sorted([L, W, H], reverse=True)
+                        second_longest = dims[1]
+
+                        # Determine which surcharge applies
+                        if L > 96 or (L + girth > 130) or AW > 110:
+                            reasons = []
+                            if L > 96:
+                                reasons.append(f"Length ({L:.1f}\") > 96\"")
+                            if L + girth > 130:
+                                reasons.append(f"Length + Girth ({L + girth:.1f}\") > 130\"")
+                            if AW > 110:
+                                reasons.append(f"Actual Weight ({AW:.1f} lbs) > 110 lbs")
+
+                            surcharge_details.append({
+                                "SKU": row["SKU"],
+                                "Type": "FedEx Oversize",
+                                "Reason": " OR ".join(reasons),
+                                "Amount": row["Surcharges"],
+                                "Calculation": "Flat $255.00"
+                            })
+                        elif AW > 50:
+                            surcharge_details.append({
+                                "SKU": row["SKU"],
+                                "Type": "FedEx AHS (Additional Handling - Weight)",
+                                "Reason": f"Actual Weight ({AW:.1f} lbs) > 50 lbs",
+                                "Amount": row["Surcharges"],
+                                "Calculation": "Flat $56.25"
+                            })
+                        else:
+                            reasons = []
+                            if L > 48:
+                                reasons.append(f"Length ({L:.1f}\") > 48\"")
+                            if second_longest > 30:
+                                reasons.append(f"Second longest side ({second_longest:.1f}\") > 30\"")
+                            if L + girth > 105:
+                                reasons.append(f"Length + Girth ({L + girth:.1f}\") > 105\"")
+
+                            surcharge_details.append({
+                                "SKU": row["SKU"],
+                                "Type": "FedEx AHS (Additional Handling - Dims)",
+                                "Reason": " OR ".join(reasons),
+                                "Amount": row["Surcharges"],
+                                "Calculation": "Flat $38.50"
+                            })
+
+            # Display surcharge details as expandable sections
+            for detail in surcharge_details:
+                with st.expander(f"🔸 {detail['SKU']} — {detail['Type']} — ${detail['Amount']:,.2f}"):
+                    st.write(f"**Trigger:** {detail['Reason']}")
+                    st.write(f"**Calculation:** {detail['Calculation']}")
+        else:
+            st.success("✓ No surcharges applied to this quote")
+
+        # Carrier breakdown
+        st.markdown("**Carrier Breakdown:**")
+        carrier_counts = valid_df.groupby("Carrier").agg({
+            "Units": "sum",
+            "Base Shipping Cost": "sum"
+        }).reset_index()
+
+        for _, crow in carrier_counts.iterrows():
+            st.write(f"• **{crow['Carrier']}**: {crow['Units']} units, ${crow['Base Shipping Cost']:,.2f} shipping")
+
+    else:
+        st.info("Fill in SKU data above to see calculated quotes.")
+        grand_total = 0.0
+        subtotal = 0.0
+        discount_amount = 0.0
+
+    # ── Lock It In button ──
+    st.divider()
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🔒 Lock It In", type="primary", use_container_width=True):
+            errors = []
+            if not first_name.strip():
+                errors.append("First Name is required.")
+            if not last_name.strip():
+                errors.append("Last Name is required.")
+            if not email.strip():
+                errors.append("Email Address is required.")
+            if not product_type or product_type == "":
+                errors.append("Product Type is required.")
+            if valid_df.empty:
+                errors.append("At least one SKU must be fully filled out.")
+
+            if errors:
+                for e in errors:
+                    st.error(e)
+            else:
+                pdf_bytes = generate_pdf(
+                    valid_df, first_name, last_name, email, margin_pct, base_fee,
+                    discount_pct, client_account, product_type
+                )
+                st.success("Quote generated successfully!")
+                st.download_button(
+                    label="📥 Download Quote PDF",
+                    data=pdf_bytes,
+                    file_name=f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+
+
+if __name__ == "__main__":
+    main()
