@@ -143,12 +143,17 @@ def compute_quotes(df: pd.DataFrame, margin_pct: float,
 # ─── PDF generation ──────────────────────────────────────────────────────────
 class QuotePDF(FPDF):
     def header(self):
+        # Title on the left
+        self.set_font("Helvetica", "B", 18)
+        self.cell(0, 10, "Fulfillment Pricing Quote", ln=False, align="L")
+
+        # Logo in the right corner (smaller size)
         logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
         if os.path.exists(logo_path):
-            self.image(logo_path, 10, 8, 40)
-        self.set_font("Helvetica", "B", 18)
-        self.cell(0, 10, "Fulfillment Pricing Quote", ln=True, align="C")
-        self.ln(5)
+            # Position logo in top right corner (x, y, width)
+            self.image(logo_path, x=240, y=8, w=30)
+
+        self.ln(15)
 
     def footer(self):
         self.set_y(-15)
