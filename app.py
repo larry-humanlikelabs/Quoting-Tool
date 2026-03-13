@@ -565,6 +565,7 @@ def main():
         """
         Normalize quote data types to ensure consistent comparison and storage.
         Prevents data loss from type mismatches between AgGrid and session state.
+        Also enforces validation rules: no negative numbers, minimum Units = 1.
         """
         normalized = df.copy()
 
@@ -575,9 +576,13 @@ def main():
         for col in ["Units", "Length", "Width", "Height", "Actual Weight"]:
             normalized[col] = pd.to_numeric(normalized[col], errors="coerce").fillna(0)
 
+        # Prevent negative values - replace with 0
+        for col in ["Length", "Width", "Height", "Actual Weight"]:
+            normalized.loc[normalized[col] < 0, col] = 0.0
+
         # Ensure Units is integer
         normalized["Units"] = normalized["Units"].astype(int)
-        # Ensure Units is at least 1 (prevent 0 units)
+        # Ensure Units is at least 1 (prevent 0 or negative units)
         normalized.loc[normalized["Units"] < 1, "Units"] = 1
 
         return normalized
