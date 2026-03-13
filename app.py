@@ -1020,6 +1020,8 @@ def main():
                 csv_filename = f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.csv"
                 csv_data = valid_df.to_csv(index=False)
 
+                st.info(f"📦 Files ready: {pdf_filename} ({len(pdf_bytes)} bytes), {csv_filename} ({len(csv_data)} bytes)")
+
                 # Show both download buttons side by side
                 col_pdf, col_csv = st.columns(2)
 
