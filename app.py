@@ -604,6 +604,9 @@ def main():
                 st.session_state.import_success = True
                 st.session_state.import_count = len(import_df)
 
+                # Change grid key to force re-render with new data
+                st.session_state.grid_key = st.session_state.get('grid_key', 0) + 1
+
                 # Rerun to refresh the grid with imported data
                 st.rerun()
 
@@ -741,6 +744,9 @@ def main():
     header_height = 50  # Header height
     calculated_height = min(max(400, (num_rows * row_height) + header_height), 800)
 
+    # Use dynamic key to force grid refresh when data is imported
+    grid_key = f"quote_data_grid_{st.session_state.get('grid_key', 0)}"
+
     grid_response = AgGrid(
         st.session_state.quote_data,
         gridOptions=grid_options,
@@ -752,8 +758,8 @@ def main():
         allow_unsafe_jscode=True,
         enable_enterprise_modules=False,
         custom_css=custom_css,
-        reload_data=False,
-        key="quote_data_grid",
+        reload_data=True,
+        key=grid_key,
     )
 
     # Update session state with edited data (preserve raw input)
