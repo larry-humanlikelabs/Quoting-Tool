@@ -1014,9 +1014,19 @@ def main():
                 except Exception as e:
                     st.warning(f"Note: Audit logging failed ({e}). Contact administrator if this persists.")
 
-                # Generate CSV export with all calculated data
-                csv_filename = f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.csv"
-                csv_data = valid_df.to_csv(index=False)
+                # Generate CSV export with SKU data and unit cost only
+                try:
+                    csv_filename = f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.csv"
+                    # Select only essential columns for CSV export
+                    csv_columns = ["SKU", "Units", "Length", "Width", "Height", "Actual Weight", "Unit Cost", "Unit Price"]
+                    csv_df = valid_df[csv_columns].copy()
+                    csv_data = csv_df.to_csv(index=False)
+                    csv_success = True
+                except Exception as csv_error:
+                    st.error(f"CSV generation failed: {csv_error}")
+                    csv_data = ""
+                    csv_filename = ""
+                    csv_success = False
 
                 # Store in session state to persist across reruns
                 st.session_state.quote_generated = True
@@ -1025,6 +1035,7 @@ def main():
                 st.session_state.pdf_filename = pdf_filename
                 st.session_state.csv_data = csv_data
                 st.session_state.csv_filename = csv_filename
+                st.session_state.csv_success = csv_success
 
     # Show download buttons if quote has been generated (outside button handler)
     if st.session_state.get('quote_generated', False):
@@ -1032,26 +1043,36 @@ def main():
 
         st.info(f"📦 Files ready: {st.session_state.pdf_filename} ({len(st.session_state.pdf_bytes)} bytes), {st.session_state.csv_filename} ({len(st.session_state.csv_data)} bytes)")
 
-        # Show both download buttons side by side
-        col_pdf, col_csv = st.columns(2)
+        # Show download buttons - PDF always, CSV only if generated successfully
+        if st.session_state.get('csv_success', False):
+            col_pdf, col_csv = st.columns(2)
 
-        with col_pdf:
+            with col_pdf:
+                st.download_button(
+                    label="📥 Download Quote PDF",
+                    data=st.session_state.pdf_bytes,
+                    file_name=st.session_state.pdf_filename,
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+
+            with col_csv:
+                st.download_button(
+                    label="📊 Download Quote CSV",
+                    data=st.session_state.csv_data,
+                    file_name=st.session_state.csv_filename,
+                    mime="text/csv",
+                    use_container_width=True,
+                    help="SKU data with unit cost and pricing"
+                )
+        else:
+            # Show only PDF button if CSV failed
             st.download_button(
                 label="📥 Download Quote PDF",
                 data=st.session_state.pdf_bytes,
                 file_name=st.session_state.pdf_filename,
                 mime="application/pdf",
                 use_container_width=True,
-            )
-
-        with col_csv:
-            st.download_button(
-                label="📊 Download Quote CSV",
-                data=st.session_state.csv_data,
-                file_name=st.session_state.csv_filename,
-                mime="text/csv",
-                use_container_width=True,
-                help="Download quote data with all calculations in CSV format"
             )
 
 
