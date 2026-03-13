@@ -678,10 +678,12 @@ def main():
         # Clear the flag so message doesn't persist forever
         st.session_state.import_success = False
 
-    # DEBUG: Show row count in session state
+    # DEBUG: Show row count and first few SKUs in session state
+    total_rows = len(st.session_state.quote_data)
     non_empty_rows = st.session_state.quote_data[st.session_state.quote_data['SKU'].ne('')].shape[0]
     if non_empty_rows > 0:
-        st.info(f"📊 Debug: Session state contains {non_empty_rows} SKUs with data, {len(st.session_state.quote_data)} total rows")
+        first_skus = st.session_state.quote_data[st.session_state.quote_data['SKU'].ne('')]['SKU'].head(3).tolist()
+        st.info(f"📊 Debug: Session state has {non_empty_rows} SKUs with data out of {total_rows} total rows. First SKUs: {', '.join(first_skus)}")
 
     # ── Edit user input data with AgGrid (Excel-like navigation) ──
     gb = GridOptionsBuilder.from_dataframe(st.session_state.quote_data)
@@ -733,6 +735,12 @@ def main():
         }
     }
 
+    # Calculate dynamic height based on number of rows (min 400px, max 800px)
+    num_rows = len(st.session_state.quote_data)
+    row_height = 35  # Approximate height per row in pixels
+    header_height = 50  # Header height
+    calculated_height = min(max(400, (num_rows * row_height) + header_height), 800)
+
     grid_response = AgGrid(
         st.session_state.quote_data,
         gridOptions=grid_options,
@@ -740,7 +748,7 @@ def main():
         data_return_mode=DataReturnMode.AS_INPUT,
         fit_columns_on_grid_load=True,
         theme="streamlit",
-        height=400,
+        height=calculated_height,
         allow_unsafe_jscode=True,
         enable_enterprise_modules=False,
         custom_css=custom_css,
