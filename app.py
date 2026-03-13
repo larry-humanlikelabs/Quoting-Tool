@@ -7,7 +7,7 @@ import base64
 from datetime import datetime
 from fpdf import FPDF
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
-from utils.audit_logger import log_quote_locked_in
+from utils.audit_logger import log_quote_locked_in, generate_quote_id
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -163,7 +163,7 @@ class QuotePDF(FPDF):
 
 def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
                  email: str, margin_pct: float, base_fee: float, discount_pct: float = 0.0,
-                 client_account: str = "", product_type: str = "") -> bytes:
+                 client_account: str = "", product_type: str = "", quote_id: str = "") -> bytes:
     pdf = QuotePDF(orientation="L", format="letter")
     pdf.alias_nb_pages()
     pdf.add_page()
@@ -177,6 +177,8 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
     if product_type:
         pdf.cell(0, 7, f"Product Type: {product_type}", ln=True)
     pdf.cell(0, 7, f"Date: {datetime.now().strftime('%m/%d/%Y')}", ln=True)
+    if quote_id:
+        pdf.cell(0, 7, f"Quote ID: {quote_id}", ln=True)
     pdf.cell(0, 7, f"Target Margin: {margin_pct:.0f}%    |    Base Fulfillment Fee: ${base_fee:,.2f}", ln=True)
     pdf.ln(5)
 
@@ -718,15 +720,18 @@ def main():
                 for e in errors:
                     st.error(e)
             else:
+                # Generate quote ID first
+                quote_id = generate_quote_id()
+
                 pdf_filename = f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
                 pdf_bytes = generate_pdf(
                     valid_df, first_name, last_name, email, margin_pct, base_fee,
-                    discount_pct, client_account, product_type
+                    discount_pct, client_account, product_type, quote_id
                 )
 
                 # Log quote to audit trail
                 try:
-                    quote_id = log_quote_locked_in(
+                    log_quote_locked_in(
                         first_name=first_name,
                         last_name=last_name,
                         email=email,
@@ -737,11 +742,12 @@ def main():
                         dhl_nqd_rate=dhl_nqd_rate,
                         discount_pct=discount_pct,
                         valid_df=valid_df,
-                        pdf_filename=pdf_filename
+                        pdf_filename=pdf_filename,
+                        quote_id=quote_id
                     )
                     st.success(f"✓ Quote {quote_id} generated and logged successfully!")
                 except Exception as e:
-                    st.success("Quote generated successfully!")
+                    st.success(f"✓ Quote {quote_id} generated successfully!")
                     st.warning(f"Note: Audit logging failed ({e}). Contact administrator if this persists.")
 
                 st.download_button(

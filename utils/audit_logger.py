@@ -73,7 +73,8 @@ def log_quote_locked_in(
     discount_pct: float,
     valid_df: pd.DataFrame,
     pdf_filename: str,
-    log_path: Optional[Path] = None
+    log_path: Optional[Path] = None,
+    quote_id: Optional[str] = None
 ) -> str:
     """
     Log a locked-in quote to the audit trail.
@@ -91,6 +92,7 @@ def log_quote_locked_in(
         valid_df: DataFrame with calculated quote rows
         pdf_filename: Generated PDF filename
         log_path: Path to audit log CSV (defaults to data/audit_log.csv)
+        quote_id: Quote ID to use (optional, generates new ID if not provided)
 
     Returns:
         quote_id: Unique identifier for this quote
@@ -104,8 +106,9 @@ def log_quote_locked_in(
     # Ensure log file exists
     ensure_audit_log_exists(log_path)
 
-    # Generate unique quote ID
-    quote_id = generate_quote_id()
+    # Generate unique quote ID if not provided
+    if quote_id is None:
+        quote_id = generate_quote_id()
 
     # Calculate totals
     subtotal = valid_df["Extended Total"].sum()
