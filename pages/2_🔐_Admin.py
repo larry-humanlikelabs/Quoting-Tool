@@ -69,30 +69,6 @@ def check_authentication() -> bool:
             else:
                 st.error("✗ Incorrect password. Access denied.")
 
-    with st.expander("💡 Admin Setup Instructions"):
-        st.markdown("""
-        **For Multiple Admin Users:**
-
-        Set the `BV_ADMIN_PASSWORDS` environment variable with comma-separated passwords:
-        ```
-        BV_ADMIN_PASSWORDS="password1,password2,password3"
-        ```
-
-        **For Single Admin User:**
-
-        Set the `BV_ADMIN_PASSWORD` environment variable:
-        ```
-        BV_ADMIN_PASSWORD="YourSecurePassword123!"
-        ```
-
-        **On bolt.new:**
-        1. Go to Project Settings → Environment Variables
-        2. Add `BV_ADMIN_PASSWORDS` with your comma-separated passwords
-        3. Restart the app
-
-        **Default Password (if no env var set):** `BV2026Admin!`
-        """)
-
     return False
 
 
