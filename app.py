@@ -987,13 +987,31 @@ def main():
                     st.success(f"✓ Quote {quote_id} generated successfully!")
                     st.warning(f"Note: Audit logging failed ({e}). Contact administrator if this persists.")
 
-                st.download_button(
-                    label="📥 Download Quote PDF",
-                    data=pdf_bytes,
-                    file_name=pdf_filename,
-                    mime="application/pdf",
-                    use_container_width=True,
-                )
+                # Generate CSV export with all calculated data
+                csv_filename = f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.csv"
+                csv_data = valid_df.to_csv(index=False)
+
+                # Show both download buttons side by side
+                col_pdf, col_csv = st.columns(2)
+
+                with col_pdf:
+                    st.download_button(
+                        label="📥 Download Quote PDF",
+                        data=pdf_bytes,
+                        file_name=pdf_filename,
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+
+                with col_csv:
+                    st.download_button(
+                        label="📊 Download Quote CSV",
+                        data=csv_data,
+                        file_name=csv_filename,
+                        mime="text/csv",
+                        use_container_width=True,
+                        help="Download quote data with all calculations in CSV format"
+                    )
 
 
 if __name__ == "__main__":
