@@ -1,69 +1,115 @@
 # BV Fulfillment Quoting Tool
 
-Professional web application for generating accurate fulfillment and shipping quotes.
+A professional Streamlit application for generating fulfillment pricing quotes with DHL and FedEx rate calculations.
 
 ## Features
 
-- **Automated Carrier Routing**: DHL eCommerce for packages <25 lbs, FedEx Ground Economy for ≥25 lbs
-- **Dimensional Weight Calculations**: Automatic DIM weight and billable weight calculations
-- **Surcharge Protection**: Automatic detection and application of DHL NQD and FedEx surcharges
-- **Bulk Import**: CSV upload for processing multiple SKUs at once
-- **Professional PDF Output**: Branded quotes with detailed line-item breakdowns
-- **Flexible Pricing**: Adjustable margins, base fees, and overall quote discounts
+- Interactive SKU data entry with Excel-like grid navigation
+- CSV import/export for bulk SKU management
+- Automated carrier routing (DHL for <25 lbs, FedEx for 25+ lbs)
+- Comprehensive surcharge calculations (NQD, Oversize, AHS)
+- PDF quote generation with branding
+- Admin audit trail for locked-in quotes
+- Multi-user admin access with password protection
 
-## Quick Start
+## Running the App
 
-### Installation
+### Local Development
 
 ```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-### Run Locally
-
-```bash
+# Run the app
 streamlit run app.py
 ```
 
-The app will open in your browser at `http://localhost:8501`
+### Production Deployment
 
-## Deployment
+```bash
+# Using the start script
+./start.sh
 
-### Deploy to bolt.new
+# Or using npm scripts
+npm run dev
+```
 
-1. Fork or clone this repository
-2. Go to [bolt.new](https://bolt.new)
-3. Click "Import from GitHub"
-4. Select this repository
-5. bolt.new will auto-detect Streamlit and deploy
+The app will be available at `http://localhost:5173`
 
-## Usage
+## Project Structure
 
-1. **Enter Client Info**: Fill in name, email, client/account, and product type
-2. **Set Parameters**: Adjust margin %, base fulfillment fee, and discount %
-3. **Add SKU Data**:
-   - Enter manually in the data grid, OR
-   - Download the CSV template, fill it out, and upload
-4. **Review Calculations**: Check the calculated results table
-5. **Generate PDF**: Click "Lock It In" to download a professional quote
+```
+.
+├── app.py                      # Main Streamlit application
+├── dhl_rates.csv              # DHL Zone 6 rate table
+├── logo.png                   # Company logo for PDFs
+├── SKU_Import_Template.csv    # Template for bulk imports
+├── pages/
+│   ├── 1_📚_Tool_Logic.py    # Documentation page
+│   └── 2_🔐_Admin.py         # Admin audit trail
+├── utils/
+│   ├── __init__.py
+│   └── audit_logger.py        # Audit logging utilities
+└── data/
+    └── .gitkeep               # Audit log storage
 
-## Files
+```
 
-- `app.py` - Main Streamlit application
-- `requirements.txt` - Python dependencies
-- `dhl_rates.csv` - DHL Zone 6 rate data
-- `SKU_Import_Template.csv` - CSV template for bulk imports
-- `logo.png` - Company logo for PDF quotes
-- `pages/1_📚_Tool_Logic.py` - Documentation page explaining calculations
+## Environment Variables
 
-## Requirements
+The app uses Supabase for data persistence (optional). Set these in `.env`:
 
-- Python 3.10+
-- Streamlit
-- Pandas
-- FPDF2
-- NumPy
+```
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_SUPABASE_ANON_KEY=your_anon_key
+```
 
-## License
+### Admin Access
 
-© 2026 BazaarVoice. Internal use only.
+Configure admin passwords using environment variables:
+
+**Multiple Admins:**
+```
+BV_ADMIN_PASSWORDS="password1,password2,password3"
+```
+
+**Single Admin:**
+```
+BV_ADMIN_PASSWORD="YourSecurePassword123!"
+```
+
+Default password (if not set): `BV2026Admin!`
+
+## Admin Panel
+
+Access the admin panel at `/Admin` to:
+- View all locked-in quotes
+- Filter by date, email, client, product type, and total amount
+- Export audit data to CSV
+- View detailed SKU-level breakdowns
+
+## Rate Configuration
+
+- **DHL Rates:** Loaded from `dhl_rates.csv` (Zone 6 pricing)
+- **FedEx Rates:** Hardcoded in `app.py` (Zone 6, 25-70 lbs)
+- **Base Fulfillment Fee:** Configurable via sidebar (default $2.50)
+- **DHL NQD Rate:** Configurable via sidebar (default $2.50/lb)
+
+## CSV Import Format
+
+Use the template `SKU_Import_Template.csv` with these columns:
+
+```
+SKU, Units, Length (in), Width (in), Height (in), Actual Weight (lbs)
+```
+
+## Security Notes
+
+- Admin panel is password-protected
+- Quote data is logged to `data/audit_log.csv`
+- No sensitive data is exposed in PDFs beyond pricing
+- All calculations are performed server-side
+
+## Support
+
+For questions or issues, contact your BV Fulfillment operations manager.

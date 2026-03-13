@@ -1,0 +1,13 @@
+{
+  "name": "bv-fulfillment-quoting-tool",
+  "version": "1.0.0",
+  "description": "BV Fulfillment Quoting Tool - Streamlit App",
+  "scripts": {
+    "dev": "python3 -m streamlit run app.py --server.port=5173 --server.address=0.0.0.0 --server.headless=true",
+    "start": "python3 -m streamlit run app.py --server.port=5173 --server.address=0.0.0.0 --server.headless=true",
+    "build": "echo 'No build step required for Streamlit'"
+  },
+  "keywords": ["streamlit", "fulfillment", "quoting"],
+  "author": "BV Fulfillment",
+  "license": "ISC"
+}
