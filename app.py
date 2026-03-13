@@ -505,9 +505,11 @@ def main():
         )
 
         if uploaded_file is not None:
+            st.warning(f"🚀 CSV UPLOAD DETECTED: File '{uploaded_file.name}' with size {uploaded_file.size} bytes")
             try:
                 # Security: Read CSV with UTF-8 encoding (handles BOM)
                 import_df = pd.read_csv(uploaded_file, encoding='utf-8-sig')
+                st.success(f"✅ CSV PARSED: {len(import_df)} rows read from file")
 
                 # Security: Check row count limit (prevent resource exhaustion)
                 if len(import_df) > 10000:
