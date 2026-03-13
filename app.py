@@ -599,8 +599,13 @@ def main():
 
                 # Update session state
                 st.session_state.quote_data = import_df
-                st.success(f"✓ Successfully imported {len(import_df)} SKUs! Scroll down to review the calculated quote.")
-                # Note: Don't rerun here - let the page continue to show results below
+
+                # Set a flag to show success message after rerun
+                st.session_state.import_success = True
+                st.session_state.import_count = len(import_df)
+
+                # Rerun to refresh the grid with imported data
+                st.rerun()
 
             except pd.errors.ParserError as e:
                 st.error(f"❌ CSV file is malformed: {str(e)}")
@@ -666,6 +671,12 @@ def main():
             st.rerun()
 
     st.divider()
+
+    # Show success message after CSV import (persists after rerun)
+    if st.session_state.get("import_success", False):
+        st.success(f"✓ Successfully imported {st.session_state.import_count} SKUs! Data is now loaded in the grid below.")
+        # Clear the flag so message doesn't persist forever
+        st.session_state.import_success = False
 
     # ── Edit user input data with AgGrid (Excel-like navigation) ──
     gb = GridOptionsBuilder.from_dataframe(st.session_state.quote_data)
