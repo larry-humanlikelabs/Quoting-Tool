@@ -676,9 +676,12 @@ def main():
     # DEBUG: Show row count and first few SKUs in session state
     total_rows = len(st.session_state.quote_data)
     non_empty_rows = st.session_state.quote_data[st.session_state.quote_data['SKU'].ne('')].shape[0]
+    st.warning(f"🔍 CRITICAL DEBUG - Session state before grid: {non_empty_rows} non-empty SKUs out of {total_rows} total rows. Grid key: {st.session_state.get('grid_key', 0)}")
     if non_empty_rows > 0:
         first_skus = st.session_state.quote_data[st.session_state.quote_data['SKU'].ne('')]['SKU'].head(3).tolist()
-        st.info(f"📊 Debug: Session state has {non_empty_rows} SKUs with data out of {total_rows} total rows. First SKUs: {', '.join(first_skus)}")
+        st.info(f"📊 First 3 SKUs in session state: {', '.join(first_skus)}")
+        # Show full dataframe shape
+        st.info(f"📐 DataFrame shape: {st.session_state.quote_data.shape}, Columns: {list(st.session_state.quote_data.columns)}")
 
     # ── Edit user input data with AgGrid (Excel-like navigation) ──
     gb = GridOptionsBuilder.from_dataframe(st.session_state.quote_data)
