@@ -170,6 +170,11 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=20)
 
+    # Draw decorative border around the page
+    pdf.set_draw_color(44, 62, 80)  # Dark blue-gray
+    pdf.set_line_width(0.5)
+    pdf.rect(5, 5, 269, 206)  # x, y, width, height for landscape letter
+
     pdf.set_font("Helvetica", "", 11)
     pdf.cell(0, 7, f"Prepared By: {first_name} {last_name}", ln=True)
     pdf.cell(0, 7, f"Email: {email}", ln=True)
@@ -341,6 +346,23 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
         pdf.set_font("Helvetica", "B", 13)
         pdf.cell(150, 10, "", ln=False)  # Left padding
         pdf.cell(0, 10, f"Grand Total Estimate: ${grand_total:,.2f}", ln=True, align="R")
+
+    # Add important notice at the bottom
+    pdf.ln(10)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(255, 243, 205)  # Light yellow background
+    pdf.set_draw_color(44, 62, 80)  # Dark border
+    pdf.set_line_width(0.3)
+
+    # Notice box
+    pdf.multi_cell(
+        0, 5,
+        "IMPORTANT NOTICE: Accurate SKU dimensions and weight reporting by clients is critical to maintaining the "
+        "integrity of our margins on deals. If SKUs are received by our 3PL partners and they greatly exceed the "
+        "communicated SKU details, BV may hold the campaign prior to shipment to our members and seek additional "
+        "fulfillment charges.",
+        border=1, align="L", fill=True
+    )
 
     buf = io.BytesIO()
     pdf.output(buf)
@@ -790,6 +812,15 @@ def main():
 
         for _, crow in carrier_counts.iterrows():
             st.write(f"• **{crow['Carrier']}**: {crow['Units']} units, ${crow['Base Shipping Cost']:,.2f} shipping")
+
+        # Important notice
+        st.divider()
+        st.warning(
+            "⚠️ **IMPORTANT NOTICE:** Accurate SKU dimensions and weight reporting by clients is critical to maintaining the "
+            "integrity of our margins on deals. If SKUs are received by our 3PL partners and they greatly exceed the "
+            "communicated SKU details, BV may hold the campaign prior to shipment to our members and seek additional "
+            "fulfillment charges."
+        )
 
     else:
         st.info("Fill in SKU data above to see calculated quotes.")
