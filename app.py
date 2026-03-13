@@ -430,7 +430,6 @@ def main():
         stopEditingWhenCellsLoseFocus=True,
         suppressRowClickSelection=True,
         suppressCellFocus=False,
-        navigateToNextCell=True,
     )
 
     grid_options = gb.build()
