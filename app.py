@@ -630,6 +630,9 @@ def main():
                 # Increment grid key to force grid re-render with new data
                 st.session_state.grid_key = st.session_state.get('grid_key', 0) + 1
 
+                # Clear the file uploader by incrementing its key
+                st.session_state.uploader_key += 1
+
                 # Rerun to refresh page and show imported data in grid
                 st.rerun()
 
