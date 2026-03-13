@@ -431,6 +431,20 @@ def main():
 
     grid_options = gb.build()
 
+    # Custom CSS for grid lines
+    custom_css = {
+        ".ag-cell": {
+            "border": "1px solid #e0e0e0 !important",
+        },
+        ".ag-header-cell": {
+            "border": "1px solid #d0d0d0 !important",
+            "background-color": "#f5f5f5 !important",
+        },
+        ".ag-row": {
+            "border-bottom": "1px solid #e0e0e0 !important",
+        }
+    }
+
     grid_response = AgGrid(
         st.session_state.quote_data,
         gridOptions=grid_options,
@@ -441,6 +455,7 @@ def main():
         height=400,
         allow_unsafe_jscode=True,
         enable_enterprise_modules=False,
+        custom_css=custom_css,
     )
 
     # Update session state with edited data
