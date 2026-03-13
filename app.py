@@ -163,7 +163,8 @@ class QuotePDF(FPDF):
 
 def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
                  email: str, margin_pct: float, base_fee: float, discount_pct: float = 0.0,
-                 client_account: str = "", product_type: str = "", quote_id: str = "") -> bytes:
+                 client_account: str = "", product_type: str = "", quote_id: str = "",
+                 dhl_nqd_rate: float = 2.50) -> bytes:
     pdf = QuotePDF(orientation="L", format="letter")
     pdf.alias_nb_pages()
     pdf.add_page()
@@ -183,8 +184,8 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
     pdf.ln(5)
 
     # Column widths optimized to fit landscape letter (279mm - 20mm margins = 259mm usable)
-    cols = ["SKU", "Units", "Act Wt", "DIM", "Bill", "Carrier", "Ship", "Surch", "Cost", "Price", "Total"]
-    widths = [30, 15, 18, 18, 18, 22, 22, 22, 22, 24, 28]  # Total: 239mm (fits with margins)
+    cols = ["SKU", "Units", "Actual Wt", "DIM Wt", "Bill Wt", "Carrier", "Ship", "Surch", "Cost", "Price", "Total"]
+    widths = [28, 13, 20, 18, 18, 20, 22, 22, 22, 24, 28]  # Total: 235mm (fits with margins)
 
     pdf.set_font("Helvetica", "B", 7)
     pdf.set_fill_color(44, 62, 80)
@@ -228,20 +229,117 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
         pdf.ln()
         fill = not fill
 
+    # Add surcharge details section if applicable
+    surcharge_details = []
+    for idx, row in rows.iterrows():
+        if row["Surcharges"] > 0:
+            L, W, H = row["Length"], row["Width"], row["Height"]
+            AW = row["Actual Weight"]
+            carrier = row["Carrier"]
+
+            if carrier == "DHL":
+                girth = (2 * W) + (2 * H)
+                longest = max(L, W, H)
+                volume = L * W * H
+
+                reasons = []
+                if L + girth > 50:
+                    reasons.append(f"Length + Girth ({L + girth:.1f}\") > 50\"")
+                if longest > 27:
+                    reasons.append(f"Longest side ({longest:.1f}\") > 27\"")
+                if volume > 1728:
+                    reasons.append(f"Volume ({volume:.0f} cu.in) > 1728 cu.in")
+
+                surcharge_details.append({
+                    "SKU": row["SKU"],
+                    "Type": "DHL NQD (Non-Qualified Dimension)",
+                    "Reason": " OR ".join(reasons),
+                    "Amount": row["Surcharges"],
+                    "Calculation": f"{row['Billable Weight']:.0f} lbs × ${dhl_nqd_rate:.2f}/lb"
+                })
+
+            elif carrier == "FedEx":
+                girth = (2 * W) + (2 * H)
+                dims = sorted([L, W, H], reverse=True)
+                second_longest = dims[1]
+
+                # Determine which surcharge applies
+                if L > 96 or (L + girth > 130) or AW > 110:
+                    reasons = []
+                    if L > 96:
+                        reasons.append(f"Length ({L:.1f}\") > 96\"")
+                    if L + girth > 130:
+                        reasons.append(f"Length + Girth ({L + girth:.1f}\") > 130\"")
+                    if AW > 110:
+                        reasons.append(f"Actual Weight ({AW:.1f} lbs) > 110 lbs")
+
+                    surcharge_details.append({
+                        "SKU": row["SKU"],
+                        "Type": "FedEx Oversize",
+                        "Reason": " OR ".join(reasons),
+                        "Amount": row["Surcharges"],
+                        "Calculation": "Flat $255.00"
+                    })
+                elif AW > 50:
+                    surcharge_details.append({
+                        "SKU": row["SKU"],
+                        "Type": "FedEx AHS (Additional Handling - Weight)",
+                        "Reason": f"Actual Weight ({AW:.1f} lbs) > 50 lbs",
+                        "Amount": row["Surcharges"],
+                        "Calculation": "Flat $56.25"
+                    })
+                else:
+                    reasons = []
+                    if L > 48:
+                        reasons.append(f"Length ({L:.1f}\") > 48\"")
+                    if second_longest > 30:
+                        reasons.append(f"Second longest side ({second_longest:.1f}\") > 30\"")
+                    if L + girth > 105:
+                        reasons.append(f"Length + Girth ({L + girth:.1f}\") > 105\"")
+
+                    surcharge_details.append({
+                        "SKU": row["SKU"],
+                        "Type": "FedEx AHS (Additional Handling - Dims)",
+                        "Reason": " OR ".join(reasons),
+                        "Amount": row["Surcharges"],
+                        "Calculation": "Flat $38.50"
+                    })
+
+    # Display surcharge details if any exist
+    if surcharge_details:
+        pdf.ln(5)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 7, "Surcharge Details:", ln=True)
+        pdf.set_font("Helvetica", "", 8)
+
+        for detail in surcharge_details:
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.cell(0, 5, f"• {detail['SKU']} - {detail['Type']} - ${detail['Amount']:,.2f}", ln=True)
+            pdf.set_font("Helvetica", "", 8)
+            pdf.cell(10, 5, "", ln=False)  # Indent
+            pdf.cell(0, 5, f"Trigger: {detail['Reason']}", ln=True)
+            pdf.cell(10, 5, "", ln=False)  # Indent
+            pdf.cell(0, 5, f"Calculation: {detail['Calculation']}", ln=True)
+            pdf.ln(2)
+
     pdf.ln(3)
     pdf.set_font("Helvetica", "B", 11)
 
-    # Show subtotal, discount, and final total
+    # Show subtotal, discount, and final total (positioned from right edge)
     subtotal = grand_total
     if discount_pct > 0:
+        pdf.cell(150, 8, "", ln=False)  # Left padding
         pdf.cell(0, 8, f"Subtotal: ${subtotal:,.2f}", ln=True, align="R")
         discount_amount = subtotal * (discount_pct / 100)
+        pdf.cell(150, 8, "", ln=False)  # Left padding
         pdf.cell(0, 8, f"Discount ({discount_pct:.0f}%): -${discount_amount:,.2f}", ln=True, align="R")
         pdf.set_font("Helvetica", "B", 13)
         final_total = subtotal - discount_amount
+        pdf.cell(150, 10, "", ln=False)  # Left padding
         pdf.cell(0, 10, f"Grand Total Estimate: ${final_total:,.2f}", ln=True, align="R")
     else:
         pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(150, 10, "", ln=False)  # Left padding
         pdf.cell(0, 10, f"Grand Total Estimate: ${grand_total:,.2f}", ln=True, align="R")
 
     buf = io.BytesIO()
@@ -726,7 +824,7 @@ def main():
                 pdf_filename = f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
                 pdf_bytes = generate_pdf(
                     valid_df, first_name, last_name, email, margin_pct, base_fee,
-                    discount_pct, client_account, product_type, quote_id
+                    discount_pct, client_account, product_type, quote_id, dhl_nqd_rate
                 )
 
                 # Log quote to audit trail
