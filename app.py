@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 import io
+import base64
 from datetime import datetime
 from fpdf import FPDF
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
@@ -238,14 +239,24 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
     return buf.getvalue()
 
 
+# ─── Helper function for non-expandable logo ─────────────────────────────────
+def get_base64_image(image_path: str) -> str:
+    """Convert image to base64 string for inline HTML rendering."""
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
 # ─── Streamlit UI ────────────────────────────────────────────────────────────
 def main():
-    # Display logo and title
+    # Display logo and title (logo is non-expandable)
     logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
     if os.path.exists(logo_path):
         col1, col2 = st.columns([1, 5])
         with col1:
-            st.image(logo_path, width=120)
+            st.markdown(
+                f'<img src="data:image/png;base64,{get_base64_image(logo_path)}" width="120" style="pointer-events: none;">',
+                unsafe_allow_html=True
+            )
         with col2:
             st.title("BV Fulfillment Quoting Tool")
     else:
