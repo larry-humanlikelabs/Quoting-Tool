@@ -484,23 +484,28 @@ def main():
     grid_response = AgGrid(
         st.session_state.quote_data,
         gridOptions=grid_options,
-        update_mode=GridUpdateMode.MODEL_CHANGED,
-        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+        update_mode=GridUpdateMode.VALUE_CHANGED,
+        data_return_mode=DataReturnMode.AS_INPUT,
         fit_columns_on_grid_load=True,
         theme="streamlit",
         height=400,
         allow_unsafe_jscode=True,
         enable_enterprise_modules=False,
         custom_css=custom_css,
+        reload_data=False,
     )
 
-    # Update session state with edited data
+    # Update session state with edited data (preserve raw input)
     if grid_response['data'] is not None:
         edited_df = pd.DataFrame(grid_response['data'])
-        st.session_state.quote_data = edited_df
+        # Only update session state if data actually changed
+        if not edited_df.equals(st.session_state.quote_data):
+            st.session_state.quote_data = edited_df
+    else:
+        edited_df = st.session_state.quote_data
 
     # Compute calculations for display
-    result_df = compute_quotes(edited_df, margin_pct, base_fee, dhl_nqd_rate)
+    result_df = compute_quotes(edited_df.copy(), margin_pct, base_fee, dhl_nqd_rate)
 
     valid_mask = (
         result_df["SKU"].astype(str).str.strip().ne("")
