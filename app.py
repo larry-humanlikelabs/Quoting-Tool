@@ -592,15 +592,29 @@ def main():
                 # Update session state
                 st.session_state.quote_data = import_df
 
+                # DEBUG: Verify import before rerun
+                st.success(f"🔄 BEFORE RERUN: Imported {len(import_df)} rows into session state. First SKU: {import_df.iloc[0]['SKU'] if len(import_df) > 0 else 'N/A'}")
+
                 # Set a flag to show success message after rerun
                 st.session_state.import_success = True
                 st.session_state.import_count = len(import_df)
 
                 # Change grid key to force re-render with new data
-                st.session_state.grid_key = st.session_state.get('grid_key', 0) + 1
+                old_key = st.session_state.get('grid_key', 0)
+                st.session_state.grid_key = old_key + 1
 
-                # Rerun to refresh the grid with imported data
-                st.rerun()
+                st.info(f"🔑 Grid key changed from {old_key} to {st.session_state.grid_key}. About to rerun...")
+
+                # Force page refresh with small delay to ensure state is saved
+                import time
+                time.sleep(0.1)
+
+                # Try rerun
+                try:
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"⚠️ Rerun failed: {e}")
+                    st.info("Please refresh the page manually (F5) to see imported data.")
 
             except pd.errors.ParserError as e:
                 st.error(f"❌ CSV file is malformed: {str(e)}")
