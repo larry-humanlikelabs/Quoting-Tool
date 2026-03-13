@@ -678,6 +678,11 @@ def main():
         # Clear the flag so message doesn't persist forever
         st.session_state.import_success = False
 
+    # DEBUG: Show row count in session state
+    non_empty_rows = st.session_state.quote_data[st.session_state.quote_data['SKU'].ne('')].shape[0]
+    if non_empty_rows > 0:
+        st.info(f"📊 Debug: Session state contains {non_empty_rows} SKUs with data, {len(st.session_state.quote_data)} total rows")
+
     # ── Edit user input data with AgGrid (Excel-like navigation) ──
     gb = GridOptionsBuilder.from_dataframe(st.session_state.quote_data)
 
