@@ -497,11 +497,16 @@ def main():
 
     with col_import:
         st.markdown("**📥 Import SKUs from CSV**")
+        # Initialize uploader key in session state
+        if 'uploader_key' not in st.session_state:
+            st.session_state.uploader_key = 0
+
         uploaded_file = st.file_uploader(
             "Upload CSV file",
             type=['csv'],
             help="Upload a CSV file with columns: SKU, Units, Length, Width, Height, Actual Weight",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            key=f"csv_uploader_{st.session_state.uploader_key}"
         )
 
         if uploaded_file is not None:
@@ -602,21 +607,16 @@ def main():
                 st.session_state.import_count = len(import_df)
 
                 # Change grid key to force re-render with new data
-                old_key = st.session_state.get('grid_key', 0)
-                st.session_state.grid_key = old_key + 1
+                old_grid_key = st.session_state.get('grid_key', 0)
+                st.session_state.grid_key = old_grid_key + 1
 
-                st.info(f"🔑 Grid key changed from {old_key} to {st.session_state.grid_key}. About to rerun...")
+                # Increment uploader key to clear the file uploader (forces rerun)
+                st.session_state.uploader_key += 1
 
-                # Force page refresh with small delay to ensure state is saved
-                import time
-                time.sleep(0.1)
+                st.info(f"🔑 Grid key: {old_grid_key} → {st.session_state.grid_key}, Uploader key: → {st.session_state.uploader_key}. Clearing uploader to trigger reload...")
 
-                # Try rerun
-                try:
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"⚠️ Rerun failed: {e}")
-                    st.info("Please refresh the page manually (F5) to see imported data.")
+                # Rerun will happen automatically when uploader key changes
+                st.rerun()
 
             except pd.errors.ParserError as e:
                 st.error(f"❌ CSV file is malformed: {str(e)}")
