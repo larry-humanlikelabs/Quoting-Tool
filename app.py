@@ -553,13 +553,13 @@ def main():
                 if formula_chars.any():
                     st.warning("⚠️ Formula characters detected in SKU column. These may cause issues when exported to Excel.")
 
-                # UX: Detect duplicate SKUs
+                # UX: Detect duplicate SKUs (informational only, not an error)
                 duplicates = import_df[import_df.duplicated('SKU', keep=False)]
                 if not duplicates.empty:
                     dup_skus = duplicates['SKU'].unique()
-                    st.warning(f"⚠️ Duplicate SKUs found: {', '.join(dup_skus[:5])}")
+                    st.info(f"ℹ️ Note: {len(dup_skus)} SKU(s) appear multiple times: {', '.join(dup_skus[:5])}")
                     if len(dup_skus) > 5:
-                        st.warning(f"   ... and {len(dup_skus) - 5} more")
+                        st.info(f"   ... and {len(dup_skus) - 5} more duplicate SKU names")
 
                 # Store original data for comparison
                 original_df = import_df.copy()
