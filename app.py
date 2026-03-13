@@ -161,6 +161,32 @@ class QuotePDF(FPDF):
         self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", align="C")
 
 
+def sanitize_for_pdf(text: str) -> str:
+    """Remove or replace characters that FPDF can't handle."""
+    if not text:
+        return ""
+    # Convert to string and replace problematic characters
+    text = str(text)
+    # Replace smart quotes and other Unicode with ASCII equivalents
+    replacements = {
+        '\u201c': '"',  # Left double quote
+        '\u201d': '"',  # Right double quote
+        '\u2018': "'",  # Left single quote
+        '\u2019': "'",  # Right single quote
+        '\u2013': '-',  # En dash
+        '\u2014': '--', # Em dash
+        '\u2026': '...',# Ellipsis
+        '\u00ae': '(R)',# Registered trademark
+        '\u2122': '(TM)',# Trademark
+        '\u00a9': '(C)',# Copyright
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    # Remove any remaining non-ASCII characters
+    text = text.encode('ascii', 'ignore').decode('ascii')
+    return text
+
+
 def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
                  email: str, margin_pct: float, base_fee: float, discount_pct: float = 0.0,
                  client_account: str = "", product_type: str = "", quote_id: str = "",
@@ -213,8 +239,8 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
         ext = row["Extended Total"]
         grand_total += ext
 
-        # Truncate long SKU names to fit
-        sku_text = str(row["SKU"])[:15]
+        # Sanitize and truncate long SKU names to fit
+        sku_text = sanitize_for_pdf(str(row["SKU"]))[:15]
 
         vals = [
             sku_text,
@@ -319,7 +345,7 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
 
         for detail in surcharge_details:
             pdf.set_font("Helvetica", "B", 8)
-            pdf.cell(0, 5, f"• {detail['SKU']} - {detail['Type']} - ${detail['Amount']:,.2f}", ln=True)
+            pdf.cell(0, 5, f"• {sanitize_for_pdf(detail['SKU'])} - {detail['Type']} - ${detail['Amount']:,.2f}", ln=True)
             pdf.set_font("Helvetica", "", 8)
             pdf.cell(10, 5, "", ln=False)  # Indent
             pdf.cell(0, 5, f"Trigger: {detail['Reason']}", ln=True)
