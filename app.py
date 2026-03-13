@@ -345,7 +345,7 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
 
         for detail in surcharge_details:
             pdf.set_font("Helvetica", "B", 8)
-            pdf.cell(0, 5, f"• {sanitize_for_pdf(detail['SKU'])} - {detail['Type']} - ${detail['Amount']:,.2f}", ln=True)
+            pdf.cell(0, 5, f"- {sanitize_for_pdf(detail['SKU'])} - {detail['Type']} - ${detail['Amount']:,.2f}", ln=True)
             pdf.set_font("Helvetica", "", 8)
             pdf.cell(10, 5, "", ln=False)  # Indent
             pdf.cell(0, 5, f"Trigger: {detail['Reason']}", ln=True)
@@ -988,12 +988,24 @@ def main():
             else:
                 # Generate quote ID first
                 quote_id = generate_quote_id()
+                st.write(f"DEBUG: Quote ID generated: {quote_id}")
 
                 pdf_filename = f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
-                pdf_bytes = generate_pdf(
-                    valid_df, first_name, last_name, email, margin_pct, base_fee,
-                    discount_pct, client_account, product_type, quote_id, dhl_nqd_rate
-                )
+                st.write(f"DEBUG: PDF filename: {pdf_filename}")
+
+                try:
+                    st.write("DEBUG: Starting PDF generation...")
+                    pdf_bytes = generate_pdf(
+                        valid_df, first_name, last_name, email, margin_pct, base_fee,
+                        discount_pct, client_account, product_type, quote_id, dhl_nqd_rate
+                    )
+                    st.write(f"DEBUG: PDF generated successfully, size: {len(pdf_bytes)} bytes")
+                except Exception as pdf_error:
+                    st.error(f"PDF generation failed: {pdf_error}")
+                    import traceback
+                    st.error(f"Full traceback:\n{traceback.format_exc()}")
+                    pdf_bytes = None
+                    pdf_filename = None
 
                 # Log quote to audit trail
                 try:
@@ -1030,6 +1042,7 @@ def main():
                     csv_success = False
 
                 # Store in session state to persist across reruns
+                st.write("DEBUG: Storing data in session state...")
                 st.session_state.quote_generated = True
                 st.session_state.quote_id = quote_id
                 st.session_state.pdf_bytes = pdf_bytes
@@ -1037,12 +1050,19 @@ def main():
                 st.session_state.csv_data = csv_data
                 st.session_state.csv_filename = csv_filename
                 st.session_state.csv_success = csv_success
+                st.write(f"DEBUG: Session state updated. PDF bytes stored: {pdf_bytes is not None}")
 
     # Show download buttons if quote has been generated (outside button handler)
     if st.session_state.get('quote_generated', False):
         st.success(f"✓ Quote {st.session_state.quote_id} generated and logged successfully!")
 
-        st.info(f"📦 Files ready: {st.session_state.pdf_filename} ({len(st.session_state.pdf_bytes)} bytes), {st.session_state.csv_filename} ({len(st.session_state.csv_data)} bytes)")
+        # Debug: Check what's in session state
+        st.write(f"DEBUG: pdf_bytes is None: {st.session_state.get('pdf_bytes') is None}")
+        st.write(f"DEBUG: csv_success: {st.session_state.get('csv_success', False)}")
+
+        pdf_size = len(st.session_state.pdf_bytes) if st.session_state.get('pdf_bytes') else 0
+        csv_size = len(st.session_state.csv_data) if st.session_state.get('csv_data') else 0
+        st.info(f"📦 Files ready: {st.session_state.pdf_filename} ({pdf_size} bytes), {st.session_state.csv_filename} ({csv_size} bytes)")
 
         # Show download buttons - PDF always, CSV only if generated successfully
         if st.session_state.get('csv_success', False):
