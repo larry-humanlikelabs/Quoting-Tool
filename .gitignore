@@ -27,3 +27,8 @@ Screenshots/
 *.md
 !README.md
 nohup.out
+
+# Audit data (contains sensitive quote information)
+data/audit_log.csv
+data/*.csv
+!data/.gitkeep

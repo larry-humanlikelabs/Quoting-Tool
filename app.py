@@ -7,6 +7,7 @@ import base64
 from datetime import datetime
 from fpdf import FPDF
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+from utils.audit_logger import log_quote_locked_in
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -684,15 +685,36 @@ def main():
                 for e in errors:
                     st.error(e)
             else:
+                pdf_filename = f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
                 pdf_bytes = generate_pdf(
                     valid_df, first_name, last_name, email, margin_pct, base_fee,
                     discount_pct, client_account, product_type
                 )
-                st.success("Quote generated successfully!")
+
+                # Log quote to audit trail
+                try:
+                    quote_id = log_quote_locked_in(
+                        first_name=first_name,
+                        last_name=last_name,
+                        email=email,
+                        client_account=client_account,
+                        product_type=product_type,
+                        margin_pct=margin_pct,
+                        base_fee=base_fee,
+                        dhl_nqd_rate=dhl_nqd_rate,
+                        discount_pct=discount_pct,
+                        valid_df=valid_df,
+                        pdf_filename=pdf_filename
+                    )
+                    st.success(f"✓ Quote {quote_id} generated and logged successfully!")
+                except Exception as e:
+                    st.success("Quote generated successfully!")
+                    st.warning(f"Note: Audit logging failed ({e}). Contact administrator if this persists.")
+
                 st.download_button(
                     label="📥 Download Quote PDF",
                     data=pdf_bytes,
-                    file_name=f"BV_Quote_{last_name}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                    file_name=pdf_filename,
                     mime="application/pdf",
                     use_container_width=True,
                 )
