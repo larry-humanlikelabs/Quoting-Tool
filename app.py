@@ -510,11 +510,9 @@ def main():
         )
 
         if uploaded_file is not None:
-            st.warning(f"🚀 CSV UPLOAD DETECTED: File '{uploaded_file.name}' with size {uploaded_file.size} bytes")
             try:
                 # Security: Read CSV with UTF-8 encoding (handles BOM)
                 import_df = pd.read_csv(uploaded_file, encoding='utf-8-sig')
-                st.success(f"✅ CSV PARSED: {len(import_df)} rows read from file")
 
                 # Security: Check row count limit (prevent resource exhaustion)
                 if len(import_df) > 10000:
@@ -599,23 +597,14 @@ def main():
                 # Update session state
                 st.session_state.quote_data = import_df
 
-                # DEBUG: Verify import before rerun
-                st.success(f"🔄 BEFORE RERUN: Imported {len(import_df)} rows into session state. First SKU: {import_df.iloc[0]['SKU'] if len(import_df) > 0 else 'N/A'}")
-
-                # Set a flag to show success message after rerun
+                # Set flags for post-import success message
                 st.session_state.import_success = True
                 st.session_state.import_count = len(import_df)
 
-                # Change grid key to force re-render with new data
-                old_grid_key = st.session_state.get('grid_key', 0)
-                st.session_state.grid_key = old_grid_key + 1
+                # Increment grid key to force grid re-render with new data
+                st.session_state.grid_key = st.session_state.get('grid_key', 0) + 1
 
-                # Increment uploader key to clear the file uploader (forces rerun)
-                st.session_state.uploader_key += 1
-
-                st.info(f"🔑 Grid key: {old_grid_key} → {st.session_state.grid_key}, Uploader key: → {st.session_state.uploader_key}. Clearing uploader to trigger reload...")
-
-                # Rerun will happen automatically when uploader key changes
+                # Rerun to refresh page and show imported data in grid
                 st.rerun()
 
             except pd.errors.ParserError as e:
@@ -688,16 +677,6 @@ def main():
         st.success(f"✓ Successfully imported {st.session_state.import_count} SKUs! Data is now loaded in the grid below.")
         # Clear the flag so message doesn't persist forever
         st.session_state.import_success = False
-
-    # DEBUG: Show row count and first few SKUs in session state
-    total_rows = len(st.session_state.quote_data)
-    non_empty_rows = st.session_state.quote_data[st.session_state.quote_data['SKU'].ne('')].shape[0]
-    st.warning(f"🔍 CRITICAL DEBUG - Session state before grid: {non_empty_rows} non-empty SKUs out of {total_rows} total rows. Grid key: {st.session_state.get('grid_key', 0)}")
-    if non_empty_rows > 0:
-        first_skus = st.session_state.quote_data[st.session_state.quote_data['SKU'].ne('')]['SKU'].head(3).tolist()
-        st.info(f"📊 First 3 SKUs in session state: {', '.join(first_skus)}")
-        # Show full dataframe shape
-        st.info(f"📐 DataFrame shape: {st.session_state.quote_data.shape}, Columns: {list(st.session_state.quote_data.columns)}")
 
     # ── Edit user input data with AgGrid (Excel-like navigation) ──
     gb = GridOptionsBuilder.from_dataframe(st.session_state.quote_data)
