@@ -379,6 +379,34 @@ def get_base64_image(image_path: str) -> str:
         return base64.b64encode(f.read()).decode()
 
 
+# ─── Helper function for data normalization ──────────────────────────────────
+def normalize_quote_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize quote data types to ensure consistent comparison and storage.
+    Prevents data loss from type mismatches between AgGrid and session state.
+    Also enforces validation rules: no negative numbers, minimum Units = 1.
+    """
+    normalized = df.copy()
+
+    # Ensure SKU is string
+    normalized["SKU"] = normalized["SKU"].astype(str).replace("nan", "")
+
+    # Ensure numeric columns are proper types with no NaN
+    for col in ["Units", "Length", "Width", "Height", "Actual Weight"]:
+        normalized[col] = pd.to_numeric(normalized[col], errors="coerce").fillna(0)
+
+    # Prevent negative values - replace with 0
+    for col in ["Length", "Width", "Height", "Actual Weight"]:
+        normalized.loc[normalized[col] < 0, col] = 0.0
+
+    # Ensure Units is integer
+    normalized["Units"] = normalized["Units"].astype(int)
+    # Ensure Units is at least 1 (prevent 0 or negative units)
+    normalized.loc[normalized["Units"] < 1, "Units"] = 1
+
+    return normalized
+
+
 # ─── Streamlit UI ────────────────────────────────────────────────────────────
 def main():
     # Display logo and title (logo is non-expandable)
@@ -559,33 +587,6 @@ def main():
             st.rerun()
 
     st.divider()
-
-    # ── Helper function for data normalization ──
-    def normalize_quote_data(df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Normalize quote data types to ensure consistent comparison and storage.
-        Prevents data loss from type mismatches between AgGrid and session state.
-        Also enforces validation rules: no negative numbers, minimum Units = 1.
-        """
-        normalized = df.copy()
-
-        # Ensure SKU is string
-        normalized["SKU"] = normalized["SKU"].astype(str).replace("nan", "")
-
-        # Ensure numeric columns are proper types with no NaN
-        for col in ["Units", "Length", "Width", "Height", "Actual Weight"]:
-            normalized[col] = pd.to_numeric(normalized[col], errors="coerce").fillna(0)
-
-        # Prevent negative values - replace with 0
-        for col in ["Length", "Width", "Height", "Actual Weight"]:
-            normalized.loc[normalized[col] < 0, col] = 0.0
-
-        # Ensure Units is integer
-        normalized["Units"] = normalized["Units"].astype(int)
-        # Ensure Units is at least 1 (prevent 0 or negative units)
-        normalized.loc[normalized["Units"] < 1, "Units"] = 1
-
-        return normalized
 
     # ── Edit user input data with AgGrid (Excel-like navigation) ──
     gb = GridOptionsBuilder.from_dataframe(st.session_state.quote_data)
