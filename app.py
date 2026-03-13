@@ -240,7 +240,16 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
 
 # ─── Streamlit UI ────────────────────────────────────────────────────────────
 def main():
-    st.title("📦 BV Fulfillment Quoting Tool")
+    # Display logo and title
+    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+    if os.path.exists(logo_path):
+        col1, col2 = st.columns([1, 5])
+        with col1:
+            st.image(logo_path, width=120)
+        with col2:
+            st.title("BV Fulfillment Quoting Tool")
+    else:
+        st.title("📦 BV Fulfillment Quoting Tool")
 
     with st.sidebar:
         st.header("Submitter Info")
