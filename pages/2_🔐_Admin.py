@@ -23,17 +23,13 @@ st.set_page_config(
     layout="wide",
 )
 
-# Clear cache on load
-st.cache_data.clear()
-st.cache_resource.clear()
-
 
 def get_admin_passwords() -> list:
     """
     Get list of admin passwords from environment variable.
 
     Format: BV_ADMIN_PASSWORDS="password1,password2,password3"
-    Fallback: Single password from BV_ADMIN_PASSWORD or default
+    Fallback: Single password from BV_ADMIN_PASSWORD
     """
     # Check for comma-separated list first
     passwords_str = os.getenv("BV_ADMIN_PASSWORDS", "")
@@ -41,8 +37,14 @@ def get_admin_passwords() -> list:
         return [p.strip() for p in passwords_str.split(",") if p.strip()]
 
     # Fallback to single password
-    single_password = os.getenv("BV_ADMIN_PASSWORD", "BV2026Admin!")
-    return [single_password]
+    single_password = os.getenv("BV_ADMIN_PASSWORD", "")
+    if single_password:
+        return [single_password]
+
+    # No password configured - show error
+    st.error("🚨 Admin password not configured! Set BV_ADMIN_PASSWORDS environment variable.")
+    st.stop()
+    return []
 
 
 def check_authentication() -> bool:

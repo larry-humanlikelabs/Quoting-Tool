@@ -127,11 +127,9 @@ def compute_quotes(df: pd.DataFrame, margin_pct: float,
     unit_cost = base_fee + shipping_cost + surcharges
     out["Unit Cost"] = unit_cost
 
-    # Recommended unit price
-    if margin_pct >= 100:
-        out["Unit Price"] = float("inf")
-    else:
-        out["Unit Price"] = unit_cost / (1 - margin_pct / 100)
+    # Recommended unit price (cap margin at 99.9% to prevent infinity)
+    capped_margin = min(margin_pct, 99.9)
+    out["Unit Price"] = unit_cost / (1 - capped_margin / 100)
 
     # Extended total
     out["Extended Total"] = out["Unit Price"] * out["Units"]
