@@ -1,7 +1,7 @@
 """
-Admin Audit Trail - BV Quoting Tool
+Admin - BV Quoting Tool
 
-Password-protected page for ops managers to view and audit all locked-in quotes.
+Password-protected page for ops managers to view all locked-in quotes.
 Supports multiple admin users via environment variable password list.
 """
 
@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_logger import load_audit_log
 
 st.set_page_config(
-    page_title="Admin Audit Trail - BV Quoting Tool",
+    page_title="Admin - BV Quoting Tool",
     page_icon="🔐",
     layout="wide",
 )
@@ -204,7 +204,7 @@ def main():
             clear_filters_btn = st.button("✗ Clear Filters", use_container_width=True)
 
     # Main content
-    st.title("📊 Admin Audit Trail")
+    st.title("📊 Quote Audit Trail")
     st.markdown("View and audit all locked-in quotes. Filter, search, and export historical data.")
 
     # Load audit log
