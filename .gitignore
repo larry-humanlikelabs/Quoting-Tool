@@ -32,3 +32,4 @@ nohup.out
 data/audit_log.csv
 data/*.csv
 !data/.gitkeep
+.env
