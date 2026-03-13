@@ -180,17 +180,18 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
     pdf.cell(0, 7, f"Target Margin: {margin_pct:.0f}%    |    Base Fulfillment Fee: ${base_fee:,.2f}", ln=True)
     pdf.ln(5)
 
-    cols = ["SKU", "Units", "Actual Wt", "DIM Wt", "Bill Wt", "Carrier", "Base Ship", "Surcharge", "Unit Cost", "Unit Price", "Ext Price"]
-    widths = [35, 20, 22, 22, 22, 25, 25, 25, 25, 25, 30]
+    # Column widths optimized to fit landscape letter (279mm - 20mm margins = 259mm usable)
+    cols = ["SKU", "Units", "Act Wt", "DIM", "Bill", "Carrier", "Ship", "Surch", "Cost", "Price", "Total"]
+    widths = [30, 15, 18, 18, 18, 22, 22, 22, 22, 24, 28]  # Total: 239mm (fits with margins)
 
-    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_font("Helvetica", "B", 7)
     pdf.set_fill_color(44, 62, 80)
     pdf.set_text_color(255, 255, 255)
     for c, w in zip(cols, widths):
         pdf.cell(w, 8, c, border=1, align="C", fill=True)
     pdf.ln()
 
-    pdf.set_font("Helvetica", "", 8)
+    pdf.set_font("Helvetica", "", 7)
     pdf.set_text_color(0, 0, 0)
     fill = False
     grand_total = 0.0
@@ -204,21 +205,24 @@ def generate_pdf(rows: pd.DataFrame, first_name: str, last_name: str,
         ext = row["Extended Total"]
         grand_total += ext
 
+        # Truncate long SKU names to fit
+        sku_text = str(row["SKU"])[:15]
+
         vals = [
-            str(row["SKU"]),
+            sku_text,
             str(int(row["Units"])),
             f"{row['Actual Weight']:.1f}",
             f"{row['DIM Weight']:.0f}",
             f"{row['Billable Weight']:.0f}",
-            str(row["Carrier"]),
-            f"${row['Base Shipping Cost']:,.2f}",
-            f"${row['Surcharges']:,.2f}",
-            f"${row['Unit Cost']:,.2f}",
-            f"${row['Unit Price']:,.2f}",
-            f"${ext:,.2f}",
+            str(row["Carrier"])[:4],  # Truncate carrier name
+            f"${row['Base Shipping Cost']:.2f}",
+            f"${row['Surcharges']:.2f}",
+            f"${row['Unit Cost']:.2f}",
+            f"${row['Unit Price']:.2f}",
+            f"${ext:.2f}",
         ]
         for v, w in zip(vals, widths):
-            pdf.cell(w, 7, v, border=1, align="C", fill=True)
+            pdf.cell(w, 6, v, border=1, align="C", fill=True)
         pdf.ln()
         fill = not fill
 
