@@ -182,9 +182,16 @@ def main():
                 "Household & Cleaning",
                 "Food & Beverage",
                 "Health & Wellness",
-                "Electronics",
-                "Toys & Games",
+                "Baby & Childcare",
                 "Pet Products",
+                "Electronics & Tech",
+                "Home & Garden",
+                "Kitchen Appliances",
+                "Power Tools",
+                "DIY",
+                "Automotive",
+                "Sporting Goods",
+                "Apparel & Accessories",
                 "Other"
             ],
             key="filter_product_types"
