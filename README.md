@@ -1,4 +1,4 @@
-# BV Fulfillment Quoting Tool
+# Quoting Tool
 
 A professional Streamlit application for generating fulfillment pricing quotes with DHL and FedEx rate calculations.
 
@@ -112,4 +112,4 @@ SKU, Units, Length (in), Width (in), Height (in), Actual Weight (lbs)
 
 ## Support
 
-For questions or issues, contact your BV Fulfillment operations manager.
+For questions or issues, contact your fulfillment operations manager.
