@@ -599,8 +599,8 @@ def main():
 
                 # Update session state
                 st.session_state.quote_data = import_df
-                st.success(f"✓ Successfully imported {len(import_df)} SKUs!")
-                st.rerun()
+                st.success(f"✓ Successfully imported {len(import_df)} SKUs! Scroll down to review the calculated quote.")
+                # Note: Don't rerun here - let the page continue to show results below
 
             except pd.errors.ParserError as e:
                 st.error(f"❌ CSV file is malformed: {str(e)}")
