@@ -23,6 +23,10 @@ st.set_page_config(
     layout="wide",
 )
 
+# Clear cache on load
+st.cache_data.clear()
+st.cache_resource.clear()
+
 
 def get_admin_passwords() -> list:
     """
